@@ -107,7 +107,7 @@ class BaseAlgo(ABC):
         self.log_reshaped_return = [0] * self.num_procs
         self.log_num_frames = [0] * self.num_procs
 
-    def collect_experiences(self):
+    def collect_experiences(self): #note that we are collecting experiences with torch.no_grad!
         """Collects rollouts and computes advantages.
 
         Runs several environments concurrently. The next actions are computed
