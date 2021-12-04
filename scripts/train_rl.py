@@ -14,6 +14,7 @@ import datetime
 import torch
 import numpy as np
 import subprocess
+import sentencepiece as spm
 
 import babyai
 import babyai.utils as utils
@@ -22,7 +23,7 @@ from babyai.arguments import ArgumentParser
 from babyai.model import ACModel
 from babyai.evaluate import batch_evaluate
 from babyai.utils.agent import ModelAgent
-from gym_minigrid.wrappers import RGBImgPartialObsWrapper
+from babyai.rl.utils.env import KGEnv
 
 
 # Parse arguments
@@ -45,18 +46,25 @@ parser.add_argument("--ppo-epochs", type=int, default=4,
                     help="number of epochs for PPO (default: 4)")
 parser.add_argument("--save-interval", type=int, default=50,
                     help="number of updates between two saves (default: 50, 0 means no saving)")
+parser.add_argument('--spm_file', default='./spm_models/unigram_8k.model')
+parser.add_argument('--gat_emb_size', default=50, type=int)
+parser.add_argument('--graph_dropout', default=0.0, type=float)
+parser.add_argument('--g_val', default=False, type=bool)
+parser.add_argument('--no-gat', dest='gat', action='store_false')
+parser.add_argument('--masking', default='kg', choices=['kg', 'interactive', 'none'],
+                    help='Type of object masking applied')
+parser.set_defaults(gat=True)
 args = parser.parse_args()
 
 utils.seed(args.seed)
 
 # Generate environments
+sp = spm.SentencePieceProcessor()
+sp.Load(args.spm_file)
 envs = []
 use_pixel = 'pixel' in args.arch
 for i in range(args.procs):
-    env = gym.make(args.env)
-    if use_pixel:
-        env = RGBImgPartialObsWrapper(env)
-    env.seed(100 * args.seed + i)
+    env = KGEnv(args.env, use_pixel, 100*args.seed+i, sp)
     envs.append(env)
 
 # Define model name
