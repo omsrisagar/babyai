@@ -5,13 +5,11 @@ from fuzzywuzzy import fuzz
 
 class StateAction(object):
 
-    def __init__(self, spm, vocab, vocab_rev, tsv_file, max_word_len):
-        self.graph_state = nx.DiGraph()
-        self.graph_state_rep = []
-        self.visible_state = ""
-        self.drqa_input = ""
-        self.vis_pruned_actions = []
-        self.pruned_actions_rep = []
+    def __init__(self, spm, vocab, vocab_rev, tsv_file):
+        self.agent_graph_state = nx.DiGraph()
+        self.world_graph_state = nx.DiGraph()
+        self.agent_graph_state_rep = []
+        self.world_graph_state_rep = []
         self.sp = spm
         self.vocab_act = vocab
         self.vocab_act_rev = vocab_rev
@@ -19,30 +17,27 @@ class StateAction(object):
         self.adj_matrix = np.zeros((len(self.vocab_kge['entity']), len(self.vocab_kge['entity'])))
         self.room = ""
 
-    def visualize(self):
+    def visualize(self, graph_state):
         # import matplotlib.pyplot as plt
-        pos = nx.spring_layout(self.graph_state)
-        edge_labels = {e: self.graph_state.edges[e]['rel'] for e in self.graph_state.edges}
+        pos = nx.spring_layout(graph_state)
+        edge_labels = {e: graph_state.edges[e]['rel'] for e in graph_state.edges}
         print(edge_labels)
-        nx.draw_networkx_edge_labels(self.graph_state, pos, edge_labels)
-        nx.draw(self.graph_state, pos=pos, with_labels=True, node_size=200, font_size=10)
+        nx.draw_networkx_edge_labels(graph_state, pos, edge_labels)
+        nx.draw(graph_state, pos=pos, with_labels=True, node_size=200, font_size=10)
         #plt.show()
 
     def load_vocab_kge(self, tsv_file):
         ent = {}
-        with open(tsv_file, 'r') as f:
-            for line in f:
-                e, eid = line.split('\t')
-                ent[e.strip()] = int(eid.strip())
         rel = {}
+        id = 0
         with open(tsv_file, 'r') as f:
             for line in f:
-                r, rid = line.split('\t')
-                rel[r.strip()] = int(rid.strip())
-
+                ent[line.strip()] = id
+                rel[line.strip()] = id
+                id += 1
         return {'entity': ent, 'relation': rel}
 
-    def update_state(self, visible_state, inventory_state, objs, prev_action=None, cache=None):
+    def update_state(self, obs, prev_action, env):
 
         prev_room = self.room
 
@@ -64,13 +59,15 @@ class StateAction(object):
 
         self.graph_state = graph_copy
 
-        visible_state = visible_state.split('\n')
-        room = visible_state[0]
-        visible_state = clean(' '.join(visible_state[1:]))
+        room = env.room_from_pos(*env.agent_pos)
+        room_id = env.room_to_idx(id(room))
+        self.room = 'Room ' + str(room_id+1)
 
-        dirs = ['north', 'south', 'east', 'west', 'southeast', 'southwest', 'northeast', 'northwest', 'up', 'down']
+        obj_id = env.room_to_idx(id(obj)) # except wall room and door object
+        if obj_id > 5:
+            raise ValueError(f'More than 5 objects of same type in a room!: {obj_id}')
 
-        self.visible_state = str(visible_state)
+
         rules = []
 
         if cache is None:
@@ -86,52 +83,16 @@ class StateAction(object):
         in_rl = []
         in_flag = False
 
-        for i, ov in enumerate(sents):
-            sent = ' '.join([a['word'] for a in ov['tokens']])
-            triple = ov['openie']
-            for d in dirs:
-                if d in sent and i != 0:
-                    rules.append((room, 'has', 'exit to ' + d))
+        # room has exit to lving room
+        # you in open field; so room = open_field
+        # you have ball; equivalent of carrying
+        dir_dict = {0: 'right', 1:'behind', 2: 'left', 3: 'front'}
 
-            for tr in triple:
-                h, r, t = tr['subject'].lower(), tr['relation'].lower(), tr['object'].lower()
-
-                if h == 'you':
-                    for rp in in_aliases:
-                        if fuzz.token_set_ratio(r, rp) > 80:
-                            r = "in"
-                            in_rl.append((h, r, t))
-                            in_flag = True
-                            break
-
-                if h == 'it':
-                    break
-                if not in_flag:
-                    rules.append((h, r, t))
-
-        if in_flag:
-            cur_t = in_rl[0]
-            for h, r, t in in_rl:
-                if set(cur_t[2].split()).issubset(set(t.split())):
-                    cur_t = h, r, t
-            rules.append(cur_t)
-            room = cur_t[2]
-
-        try:
-            items = inventory_state.split(':')[1].split('\n')[1:]
-            for item in items:
-                rules.append(('you', 'have', str(' ' .join(item.split()[1:]))))
-        except:
-            pass
-
-        if prev_action is not None:
-            for d in dirs:
-                if d in prev_action and self.room != "":
-                    rules.append((prev_room, d + ' of', room))
-                    if prev_room_subgraph is not None:
-                        for ed in prev_room_subgraph.edges:
-                            rules.append((ed[0], prev_room_subgraph[ed]['rel'], ed[1]))
-                    break
+        if prev_action == Actions.toggle and self.room != prev_room:
+            rules.append((prev_room, dir_dict[self.agent_dir], room))
+            if prev_room_subgraph is not None:
+                for ed in prev_room_subgraph.edges:
+                    rules.append((ed[0], prev_room_subgraph[ed]['rel'], ed[1]))
 
         for o in objs:
             #if o != 'all':
@@ -146,7 +107,7 @@ class StateAction(object):
                 if u != 'it' and v != 'it':
                     self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
 
-        return add_rules, sents
+        return add_rules
 
     def get_state_rep_kge(self):
         ret = []
@@ -211,17 +172,10 @@ class StateAction(object):
 
         return action_desc_num
 
-    def step(self, visible_state, inventory_state, objs, prev_action=None, cache=None, gat=True):
-        ret, ret_cache = self.update_state(visible_state, inventory_state, objs, prev_action, cache)
-
-        self.pruned_actions_rep = [self.get_action_rep_drqa(a) for a in self.vis_pruned_actions]
-
-        inter = self.visible_state #+ "The actions are:" + ",".join(self.vis_pruned_actions) + "."
-        self.drqa_input = self.get_visible_state_rep_drqa(inter)
-
+    def step(self, obs, prev_action, env):
+        rules = self.update_state(obs, prev_action, env)
         self.graph_state_rep = self.get_state_rep_kge(), self.adj_matrix
-
-        return ret, ret_cache
+        return rules
 
 
 def pad_sequences(sequences, maxlen=None, dtype='int32', value=0.):
