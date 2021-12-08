@@ -15,6 +15,7 @@ import torch
 import numpy as np
 import subprocess
 import sentencepiece as spm
+import json
 
 import babyai
 import babyai.utils as utils
@@ -47,13 +48,16 @@ parser.add_argument("--ppo-epochs", type=int, default=4,
 parser.add_argument("--save-interval", type=int, default=50,
                     help="number of updates between two saves (default: 50, 0 means no saving)")
 parser.add_argument('--spm_file', default='./spm_models/unigram_8k.model')
-parser.add_argument('--gat_emb_size', default=50, type=int)
-parser.add_argument('--graph_dropout', default=0.0, type=float)
-parser.add_argument('--g_val', default=False, type=bool)
-parser.add_argument('--no-gat', dest='gat', action='store_false')
-parser.add_argument('--masking', default='kg', choices=['kg', 'interactive', 'none'],
-                    help='Type of object masking applied')
-parser.set_defaults(gat=True)
+parser.add_argument('--vocab_file', default='./data/vocab.txt')
+parser.add_argument('--gat_emb_size', default=64, type=int)
+parser.add_argument('--agent_gat_emb_size', default=32, type=int)
+parser.add_argument('--dropout_ratio', default=0.2, type=float)
+parser.add_argument('--no-world_graph', dest='use_world_graph', action='store_false')
+parser.add_argument('--no-agent_graph', dest='use_agent_graph', action='store_false')
+parser.add_argument('--no-obs_image', dest='use_obs_image', action='store_false')
+parser.set_defaults(use_world_graph=True)
+parser.set_defaults(use_agent_graph=True)
+parser.set_defaults(use_obs_image=True)
 args = parser.parse_args()
 
 utils.seed(args.seed)
@@ -64,8 +68,13 @@ sp.Load(args.spm_file)
 envs = []
 use_pixel = 'pixel' in args.arch
 for i in range(args.procs):
-    env = KGEnv(args.env, use_pixel, 100*args.seed+i, sp)
+    env = KGEnv(args.env, use_pixel, 100 * args.seed + i, sp, args.vocab_file)
     envs.append(env)
+
+# Save KGEnv vocab into json file.
+vocab_dir = os.path.dirname(args.vocab_file)
+with open(vocab_dir + '/vocab.json', "w") as output:
+    json.dump(envs[0].vocab, output)
 
 # Define model name
 suffix = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
@@ -91,9 +100,9 @@ logger = logging.getLogger(__name__)
 
 # Define obss preprocessor
 if 'emb' in args.arch:
-    obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
+    obss_preprocessor = utils.IntObssPreprocessor(vocab_dir, envs[0].env.observation_space, args.pretrained_model)
 else:
-    obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].observation_space, args.pretrained_model)
+    obss_preprocessor = utils.ObssPreprocessor(vocab_dir, envs[0].env.observation_space, args.pretrained_model)
 
 # Define actor-critic model
 acmodel = utils.load_model(args.model, raise_not_found=False)
@@ -101,9 +110,10 @@ if acmodel is None:
     if args.pretrained_model:
         acmodel = utils.load_model(args.pretrained_model, raise_not_found=True)
     else:
-        acmodel = ACModel(obss_preprocessor.obs_space, envs[0].action_space,
-                          args.image_dim, args.memory_dim, args.instr_dim,
-                          not args.no_instr, args.instr_arch, not args.no_mem, args.arch)
+        acmodel = ACModel(obss_preprocessor.obs_space, envs[0].env.action_space,
+                          args.image_dim, args.memory_dim, args.instr_dim, args.gat_emb_size, args.agent_gat_emb_size,
+                          args.dropout_ratio, envs[0].vocab, args.use_obs_image, args.use_agent_graph,
+                          args.use_world_graph, not args.no_instr, args.instr_arch, not args.no_mem, args.arch)
 
 obss_preprocessor.vocab.save()
 utils.save_model(acmodel, args.model)

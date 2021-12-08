@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from torch.autograd import Variable
 from torch.distributions.categorical import Categorical
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
@@ -44,6 +45,117 @@ class FiLM(nn.Module):
         out = x * weight + bias
         return F.relu(self.bn2(out))
 
+class StateNetwork(nn.Module):
+    def __init__(self, gat_emb_size, word_emb, vocab, embedding_size, dropout_ratio):
+        super(StateNetwork, self).__init__()
+        self.vocab = vocab
+        self.vocab_size = len(self.vocab)
+        self.embedding_size = embedding_size
+        self.dropout_ratio = dropout_ratio
+        self.gat_emb_size = gat_emb_size
+        #self.params = params
+        self.gat = GAT(gat_emb_size, 3, dropout_ratio, 0.2, 1)
+        self.state_ent_emb = word_emb
+        self.fc1 = nn.Linear(self.state_ent_emb.weight.size()[0] * 3 * 1, 100)
+
+
+    def init_state_ent_emb(self, emb_size):
+        embeddings = torch.zeros((len(self.vocab_kge), emb_size))
+        for i in range(len(self.vocab_kge)):
+            graph_node_text = self.vocab_kge[i].split('_')
+            graph_node_ids = []
+            for w in graph_node_text:
+                if w in self.vocab.keys():
+                    if self.vocab[w] < len(self.vocab) - 2:
+                        graph_node_ids.append(self.vocab[w])
+                    else:
+                        graph_node_ids.append(1)
+                else:
+                    graph_node_ids.append(1)
+            graph_node_ids = torch.LongTensor(graph_node_ids)
+            cur_embeds = self.pretrained_embeds(graph_node_ids)
+
+            cur_embeds = cur_embeds.mean(dim=0)
+            embeddings[i, :] = cur_embeds
+        self.state_ent_emb = nn.Embedding.from_pretrained(embeddings, freeze=False)
+
+    def load_vocab_kge(self, vocab_file):
+        ent = {}
+        with open(vocab_file, 'r') as f:
+            for line in f:
+                e, eid = line.split('\t')
+                ent[int(eid.strip())] = e.strip()
+        return ent
+
+    def forward(self, graph_rep):
+        out = []
+        for g in graph_rep:
+            node_feats, adj = g # node_feats are not used! Instead using a zero initialized 362x50 vector
+            adj = torch.IntTensor(adj)
+            x = self.gat.forward(self.state_ent_emb.weight, adj).view(-1)
+            out.append(x.unsqueeze_(0))
+        out = torch.cat(out)
+        ret = self.fc1(out)
+        return ret
+
+class GAT(nn.Module):
+    def __init__(self, nfeat, nhid, dropout, alpha, nheads):
+        super(GAT, self).__init__()
+        self.dropout = dropout
+
+        self.attentions = [GraphAttentionLayer(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in
+                           range(nheads)]
+        for i, attention in enumerate(self.attentions):
+            self.add_module('attention_{}'.format(i), attention)
+
+    def forward(self, x, adj):
+        x = F.dropout(x, self.dropout)
+        x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
+        x = F.dropout(x, self.dropout)
+        return x
+
+class GraphAttentionLayer(nn.Module):
+    """
+    Simple GAT layer, similar to https://arxiv.org/abs/1710.10903
+    """
+
+    def __init__(self, in_features, out_features, dropout, alpha, concat=False):
+        super(GraphAttentionLayer, self).__init__()
+        self.dropout = dropout
+        self.in_features = in_features
+        self.out_features = out_features
+        self.alpha = alpha
+        self.concat = concat
+
+        self.W = nn.Parameter(nn.init.xavier_uniform_(torch.Tensor(in_features, out_features).type(
+            torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
+        self.a = nn.Parameter(nn.init.xavier_uniform_(torch.Tensor(2*out_features, 1).type(torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
+
+        self.leakyrelu = nn.LeakyReLU(self.alpha)
+
+    def forward(self, input, adj):
+        h = torch.mm(input, self.W)
+        N = h.size()[0]
+        a_input = torch.cat([h.repeat(1, N).view(N * N, -1), h.repeat(N, 1)], dim=1).view(N, -1, 2 * self.out_features)
+
+        e = self.leakyrelu(torch.matmul(a_input, self.a).squeeze(2))
+
+        zero_vec = torch.zeros_like(e)
+        zero_vec = zero_vec.fill_(9e-15)
+        attention = torch.where(adj > 0, e, zero_vec)
+
+        attention = F.softmax(attention, dim=1)
+
+        attention = F.dropout(attention, self.dropout, training=self.training)
+        h_prime = torch.matmul(attention, h)
+
+        if self.concat:
+            return F.elu(h_prime)
+        else:
+            return h_prime
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
 
 class ImageBOWEmbedding(nn.Module):
    def __init__(self, max_value, embedding_dim):
@@ -61,9 +173,9 @@ class ImageBOWEmbedding(nn.Module):
 
 class ACModel(nn.Module, babyai.rl.RecurrentACModel):
     def __init__(self, obs_space, action_space,
-                 image_dim=128, memory_dim=128, instr_dim=128,
-                 use_instr=False, lang_model="gru", use_memory=False,
-                 arch="bow_endpool_res", aux_info=None):
+                 image_dim=128, memory_dim=128, instr_dim=128, gat_emb_size=64,agent_gat_emb_size=32,
+                 dropout_ratio=0.2, vocab=None, use_obs_image=True, use_agent_graph=True, use_world_graph=False,
+                 use_instr=False, lang_model="gru", use_memory=False, arch="bow_endpool_res", aux_info=None):
         super().__init__()
 
         endpool = 'endpool' in arch
@@ -82,6 +194,13 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         self.image_dim = image_dim
         self.memory_dim = memory_dim
         self.instr_dim = instr_dim
+        self.gat_emb_size = gat_emb_size
+        self.agent_gat_emb_size = agent_gat_emb_size
+        self.vocab = vocab
+        self.dropout_ratio = dropout_ratio
+        self.use_obs_image = use_obs_image
+        self.use_agent_graph = use_agent_graph
+        self.use_world_graph = use_world_graph
 
         self.obs_space = obs_space
 
@@ -140,6 +259,10 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                     in_channels=128, imm_channels=128)
                 self.controllers.append(mod)
                 self.add_module('FiLM_' + str(ni), mod)
+
+        self.state_gat = StateNetwork(self.gat_emb_size, self.word_embedding, self.vocab, self.instr_dim,
+                                      self.dropout_ratio)
+        self.agent_state_gat = StateNetwork(self.agent_gat_emb_size, self.vocab, self.instr_dim, self.dropout_ratio)
 
         # Define memory and resize image embedding
         self.embedding_size = self.image_dim
@@ -214,7 +337,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
     def semi_memory_size(self):
         return self.memory_dim
 
-    def forward(self, obs, memory, instr_embedding=None):
+    def forward(self, obs, memory, prev_action, graph_rep, agent_graph_rep, instr_embedding=None):
         if self.use_instr and instr_embedding is None:
             instr_embedding = self._get_instr_embedding(obs.instr)
         if self.use_instr and self.lang_model == "attgru":
@@ -237,11 +360,25 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             attention = F.softmax(pre_softmax, dim=1)
             instr_embedding = (instr_embedding * attention[:, :, None]).sum(1)
 
-        x = torch.transpose(torch.transpose(obs.image, 1, 3), 2, 3)
+        # image embedding
+        if self.use_obs_image:
+            x = torch.transpose(torch.transpose(obs.image, 1, 3), 2, 3)
 
-        if 'pixel' in self.arch:
-            x /= 256.0
-        x = self.image_conv(x)
+            if 'pixel' in self.arch:
+                x /= 256.0
+            x = self.image_conv(x)
+
+        # previous action embedding
+        if self.use_agent_graph or self.use_world_graph:
+            prev_action_emb = self.word_embedding(prev_action)
+            x = torch.cat([x, p])
+
+        # world_graph embedding
+        if self.use_world_graph:
+            world_graph_emb = self.state_gat.forward(graph_rep)
+
+        # concatenate x with prev_action, graph state, agent graph state based on args
+
         if self.use_instr:
             for controller in self.controllers:
                 out = controller(x, instr_embedding)
