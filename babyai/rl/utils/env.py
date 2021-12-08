@@ -7,7 +7,8 @@ import gym
 from gym_minigrid.wrappers import RGBImgPartialObsWrapper
 
 
-GraphInfo = collections.namedtuple('GraphInfo', 'act_rep, graph_state, graph_state_rep')
+GraphInfo = collections.namedtuple('GraphInfo', 'act_rep, agent_graph_state, agent_graph_state_rep, '
+                                                'world_graph_state, world_graph_state_rep')
 
 def load_vocab(env):
     vocab = {i+2: str(v) for i, v in enumerate(env.get_dictionary())}
@@ -81,20 +82,21 @@ class KGEnv:
         env.seed(self.seed)
         self.env = env
         self.vocab, self.vocab_rev = load_vocab(self.env)
-        self.conn_rules = redis.Redis(host='localhost', port=6379, db=0)
+        self.conn_agent_graph = redis.Redis(host='localhost', port=6379, db=0)
 
 
     def _build_graph_rep(self, obs, action):
         ''' Returns various graph-based representations of the current state. '''
-        rules_cache = self.conn_rules.get(obs)
+        rules_cache = self.conn_agent_graph.get(obs)
         if rules_cache is None:
             rules = self.state_rep.step(obs, action, self)
-            self.conn_rules.set(obs, rules) # just like cache, so you don't have to do get again (103)
+            self.conn_agent_graph.set(obs, rules) # just like cache, so you don't have to do get again (103)
         else:
-            rules_cache = eval(openie_cache.decode('cp1252'))
-            rules, _ = self.state_rep.step(cleaned_obs, ob_i, objs, action, cache=openie_cache, gat=self.gat)
-        graph_state = self.state_rep.graph_state
-        graph_state_rep = self.state_rep.graph_state_rep
+            rules, _ = self.state_rep.step(obs, action, self, cache=rules_cache)
+        agent_graph_state = self.state_rep.agent_graph_state
+        agent_graph_state_rep = self.state_rep.agent_graph_state_rep
+        world_graph_state = self.state_rep.world_graph_state
+        world_graph_state_rep = self.state_rep.world_graph_state_rep
         action_rep = self.state_rep.get_action_rep_drqa(action)
         return GraphInfo(action_rep, graph_state, graph_state_rep)
 
@@ -108,7 +110,7 @@ class KGEnv:
                                    graph_state=self.state_rep.graph_state,
                                    graph_state_rep=self.state_rep.graph_state_rep)
         else:
-            graph_info = self._build_graph_rep(obs, action)
+            graph_info = self._build_graph_rep(obs['raw_obs'], action)
         return obs, reward, done, info, graph_info
 
 
@@ -121,7 +123,7 @@ class KGEnv:
         obs, info = self.env.reset()
         info['valid'] = False
         info['steps'] = 0
-        graph_info = self._build_graph_rep(obs, None)
+        graph_info = self._build_graph_rep(obs['raw_obs'], None)
         return obs, info, graph_info
 
 

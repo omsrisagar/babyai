@@ -1,5 +1,5 @@
 
-has
+has_have
 in
 is
 left
@@ -18,7 +18,6 @@ locked
 not_locked
 open
 not_open
-has_id
 connects
 Wall
 Room_1

@@ -5,16 +5,22 @@ from fuzzywuzzy import fuzz
 
 class StateAction(object):
 
-    def __init__(self, spm, vocab, vocab_rev, tsv_file):
-        self.agent_graph_state = nx.DiGraph()
-        self.world_graph_state = nx.DiGraph()
+    def __init__(self, spm, vocab, vocab_rev, tsv_file, tsv_file_agent):
+        self.agent_graph_state = nx.DiGraph() # agent specific graph state
+        self.graph_state = nx.DiGraph() # world graph state
         self.agent_graph_state_rep = []
-        self.world_graph_state_rep = []
+        self.graph_state_rep = []
         self.sp = spm
         self.vocab_act = vocab
         self.vocab_act_rev = vocab_rev
         self.vocab_kge = self.load_vocab_kge(tsv_file)
-        self.adj_matrix = np.zeros((len(self.vocab_kge['entity']), len(self.vocab_kge['entity'])))
+        self.agent_vocab_kge = self.vocab_kge
+        self.agent_adj_matrix = np.zeros((len(self.vocab_kge['entity']), len(self.vocab_kge['entity'])))
+        self.adj_matrix = np.zeros((len(self.agent_vocab_kge['entity']), len(self.agent_vocab_kge['entity'])))
+        self.ego_rel_indx = {-1: 'agent', 0: 'left', 1: 'front', 2: 'right', 3: 'far_left', 4: 'front_left',
+                        5: 'far_front', 6: 'front_right', 7: 'far_right' }
+        self.ego_rel_map = np.array([4, 4, 4, 5, 6, 6, 6, 4, 4, 4, 5, 6, 6, 6,4, 4, 4, 5, 6, 6, 6,4, 4, 4, 5, 6, 6,
+                                     6,4, 4, 4, 5, 6, 6, 6, 4, 4, 4, 1, 6, 6, 6,3,3,0,-1,2,7,7])
         self.room = ""
 
     def visualize(self, graph_state):
@@ -37,7 +43,31 @@ class StateAction(object):
                 id += 1
         return {'entity': ent, 'relation': rel}
 
-    def update_state(self, obs, prev_action, env):
+    def get_obj_desc(self, obj, env):
+        if obj.type == 'wall':
+            return {'name': 'Wall'}
+        elif obj.type == 'door':
+            obj_id = env.door_to_idx(id(obj))
+            return {'name': 'Door ' + str(obj_id), 'color': obj.color}
+        elif obj.type == 'ball':
+            obj_id = env.ball_to_idx(id(obj))
+            if obj_id > 5:
+                raise ValueError(f'More than 5 objects of same type, {obj.type} in a room!')
+            return {'name': 'Ball ' + str(obj_id), 'color': obj.color}
+        elif obj.type == 'box':
+            obj_id = env.box_to_idx(id(obj))
+            if obj_id > 5:
+                raise ValueError(f'More than 5 objects of same type, {obj.type} in a room!')
+            return {'name': 'Box ' + str(obj_id), 'color': obj.color}
+        elif obj.type == 'key':
+            obj_id = env.key_to_idx(id(obj))
+            if obj_id > 5:
+                raise ValueError(f'More than 5 objects of same type, {obj.type} in a room!')
+            return {'name': 'Key ' + str(obj_id), 'color': obj.color}
+        else:
+            raise KeyError('Unknown obj type')
+
+    def update_state(self, obs, prev_action, env, cache=None):
 
         prev_room = self.room
 
@@ -63,20 +93,35 @@ class StateAction(object):
         room_id = env.room_to_idx(id(room))
         self.room = 'Room ' + str(room_id+1)
 
-        obj_id = env.room_to_idx(id(obj)) # except wall room and door object
-        if obj_id > 5:
-            raise ValueError(f'More than 5 objects of same type in a room!: {obj_id}')
-
-
-        rules = []
 
         if cache is None:
-            sents = openie.call_stanford_openie(self.visible_state)['sentences']
-        else:
-            sents = cache
+            agent_rules = [] # agent specific
+            rules = [] # world specific
+            agent_rules.append(('You', 'in', self.room))
+            if env.carrying:
+                obj_desc = self.get_obj_desc(env.carrying, env)
+                agent_rules.append(('You', 'has_have', obj_desc['name']))
 
-        if sents == "":
-            return []
+            ego_grid = np.array(obs)
+            viewable_objs_map = ego_grid != None
+            viewable_objs = ego_grid[viewable_objs_map]
+            viewable_objs_rel = self.ego_rel_map[viewable_objs_map]
+            for obj_i in range(len(viewable_objs)):
+                obj = viewable_objs[obj_i]
+                rel = viewable_objs_rel[obj_i]
+                obj_desc = self.get_obj_desc(obj, env)
+                name = obj_desc['name']
+                agent_rules.append(('You', rel, name))
+                if name != 'Wall':
+                    rules.append((self.room, 'has', name))
+                    rules.append((name, 'color', obj_desc['color']))
+                if obj.type == 'door':
+                    lock_status = 'locked' if obj.is_locked else 'not_locked'
+                    open_status = 'open' if obj.is_open else 'not_open'
+                    rules.append((name, 'is', lock_status))
+                    rules.append((name, 'is', open_status))
+        else:
+            agent_rules, rules = cache
 
         in_aliases = ['are in', 'are facing', 'are standing', 'are behind', 'are above', 'are below', 'are in front']
 
@@ -88,8 +133,8 @@ class StateAction(object):
         # you have ball; equivalent of carrying
         dir_dict = {0: 'right', 1:'behind', 2: 'left', 3: 'front'}
 
-        if prev_action == Actions.toggle and self.room != prev_room:
-            rules.append((prev_room, dir_dict[self.agent_dir], room))
+        if prev_action == env.actions.toggle and self.room != prev_room:
+            rules.append((prev_room, dir_dict[env.agent_dir], self.room))
             if prev_room_subgraph is not None:
                 for ed in prev_room_subgraph.edges:
                     rules.append((ed[0], prev_room_subgraph[ed]['rel'], ed[1]))
@@ -118,7 +163,7 @@ class StateAction(object):
             v = '_'.join(str(v).split())
 
             if u not in self.vocab_kge['entity'].keys() or v not in self.vocab_kge['entity'].keys():
-                break
+                raise KeyError(f'u: {u} or v: {v} not in vocab_kge')
 
             u_idx = self.vocab_kge['entity'][u]
             v_idx = self.vocab_kge['entity'][v]
@@ -149,17 +194,45 @@ class StateAction(object):
 
         return list(set(ret))
 
-    def get_obs_rep(self, *args):
-        ret = [self.get_visible_state_rep_drqa(ob) for ob in args]
-        return pad_sequences(ret, maxlen=300)
+    def get_agent_state_rep_kge(self):
+        ret = []
+        self.agent_adj_matrix = np.zeros((len(self.agent_vocab_kge['entity']), len(self.agent_vocab_kge['entity'])))
 
-    def get_visible_state_rep_drqa(self, state_description):
-        remove = ['=', '-', '\'', ':', '[', ']', 'eos', 'EOS', 'SOS', 'UNK', 'unk', 'sos', '<', '>']
+        for u, v in self.agent_graph_state.edges:
+            u = '_'.join(str(u).split())
+            v = '_'.join(str(v).split())
 
-        for rm in remove:
-            state_description = state_description.replace(rm, '')
+            if u not in self.agent_vocab_kge['entity'].keys() or v not in self.agent_vocab_kge['entity'].keys():
+                raise KeyError(f'u: {u} or v: {v} not in vocab_kge')
 
-        return self.sp.encode_as_ids(state_description)
+            u_idx = self.agent_vocab_kge['entity'][u]
+            v_idx = self.agent_vocab_kge['entity'][v]
+            self.agent_adj_matrix[u_idx][v_idx] = 1
+
+            ret.append(self.agent_vocab_kge['entity'][u])
+            ret.append(self.agent_vocab_kge['entity'][v])
+
+        return list(set(ret))
+
+    def get_agent_state_kge(self):
+        ret = []
+        self.agent_adj_matrix = np.zeros((len(self.agent_vocab_kge['entity']), len(self.agent_vocab_kge['entity'])))
+
+        for u, v in self.agent_graph_state.edges:
+            u = '_'.join(str(u).split())
+            v = '_'.join(str(v).split())
+
+            if u not in self.agent_vocab_kge['entity'].keys() or v not in self.agent_vocab_kge['entity'].keys():
+                break
+
+            u_idx = self.agent_vocab_kge['entity'][u]
+            v_idx = self.agent_vocab_kge['entity'][v]
+            self.agent_adj_matrix[u_idx][v_idx] = 1
+
+            ret.append(u)
+            ret.append(v)
+
+        return list(set(ret))
 
     def get_action_rep_drqa(self, action):
 
@@ -172,9 +245,10 @@ class StateAction(object):
 
         return action_desc_num
 
-    def step(self, obs, prev_action, env):
-        rules = self.update_state(obs, prev_action, env)
+    def step(self, obs, prev_action, env, cache=None):
+        rules = self.update_state(obs, prev_action, env, cache)
         self.graph_state_rep = self.get_state_rep_kge(), self.adj_matrix
+        self.agent_graph_state_rep = self.get_agent_state_rep_kge(), self.agent_adj_matrix
         return rules
 
 
