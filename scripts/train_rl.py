@@ -47,34 +47,29 @@ parser.add_argument("--ppo-epochs", type=int, default=4,
                     help="number of epochs for PPO (default: 4)")
 parser.add_argument("--save-interval", type=int, default=50,
                     help="number of updates between two saves (default: 50, 0 means no saving)")
-parser.add_argument('--spm_file', default='./spm_models/unigram_8k.model')
-parser.add_argument('--vocab_file', default='./data/vocab.txt')
-parser.add_argument('--gat_emb_size', default=64, type=int)
-parser.add_argument('--agent_gat_emb_size', default=32, type=int)
+parser.add_argument('--vocab_file', default='../babyai/data/vocab.txt')
+parser.add_argument('--vocab_kge_file', default='../babyai/data/vocab_kge.txt')
+parser.add_argument('--gat_emb_size', default=128, type=int)
+parser.add_argument('--agent_gat_emb_size', default=128, type=int)
 parser.add_argument('--dropout_ratio', default=0.2, type=float)
 parser.add_argument('--no-world_graph', dest='use_world_graph', action='store_false')
 parser.add_argument('--no-agent_graph', dest='use_agent_graph', action='store_false')
 parser.add_argument('--no-obs_image', dest='use_obs_image', action='store_false')
+parser.add_argument('--debug', dest='debug_mode', action='store_true')
 parser.set_defaults(use_world_graph=True)
 parser.set_defaults(use_agent_graph=True)
 parser.set_defaults(use_obs_image=True)
+parser.set_defaults(debug_mode=False)
 args = parser.parse_args()
 
 utils.seed(args.seed)
 
 # Generate environments
-sp = spm.SentencePieceProcessor()
-sp.Load(args.spm_file)
 envs = []
 use_pixel = 'pixel' in args.arch
 for i in range(args.procs):
-    env = KGEnv(args.env, use_pixel, 100 * args.seed + i, sp, args.vocab_file)
+    env = KGEnv(args.env, use_pixel, 100 * args.seed + i, args.vocab_file, args.vocab_kge_file, args.debug_mode)
     envs.append(env)
-
-# Save KGEnv vocab into json file.
-vocab_dir = os.path.dirname(args.vocab_file)
-with open(vocab_dir + '/vocab.json', "w") as output:
-    json.dump(envs[0].vocab, output)
 
 # Define model name
 suffix = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
@@ -98,22 +93,29 @@ args.model = args.model.format(**model_name_parts) if args.model else default_mo
 utils.configure_logging(args.model)
 logger = logging.getLogger(__name__)
 
+# Save KGEnv vocab into json file.
+model_dir = utils.get_model_dir(args.model)
+os.makedirs(model_dir, exist_ok=True)
+with open(model_dir + '/vocab.json', "w") as output:
+    json.dump(envs[0].vocab, output)
+
 # Define obss preprocessor
 if 'emb' in args.arch:
-    obss_preprocessor = utils.IntObssPreprocessor(vocab_dir, envs[0].env.observation_space, args.pretrained_model)
+    obss_preprocessor = utils.IntObssPreprocessor(args.model, envs[0].env.observation_space, args.pretrained_model)
 else:
-    obss_preprocessor = utils.ObssPreprocessor(vocab_dir, envs[0].env.observation_space, args.pretrained_model)
+    obss_preprocessor = utils.ObssPreprocessor(args.model, envs[0].env.observation_space, args.pretrained_model)
 
 # Define actor-critic model
-acmodel = utils.load_model(args.model, raise_not_found=False)
-if acmodel is None:
-    if args.pretrained_model:
-        acmodel = utils.load_model(args.pretrained_model, raise_not_found=True)
-    else:
-        acmodel = ACModel(obss_preprocessor.obs_space, envs[0].env.action_space,
-                          args.image_dim, args.memory_dim, args.instr_dim, args.gat_emb_size, args.agent_gat_emb_size,
-                          args.dropout_ratio, envs[0].vocab, args.use_obs_image, args.use_agent_graph,
-                          args.use_world_graph, not args.no_instr, args.instr_arch, not args.no_mem, args.arch)
+# acmodel = utils.load_model(args.model, raise_not_found=False)
+# if acmodel is None:
+if args.pretrained_model:
+    acmodel = utils.load_model(args.pretrained_model, raise_not_found=True)
+else:
+    acmodel = ACModel(obss_preprocessor.obs_space, envs[0].env.action_space,
+                      args.image_dim, args.memory_dim, args.instr_dim, args.gat_emb_size, args.agent_gat_emb_size,
+                      args.dropout_ratio, envs[0].vocab, args.vocab_kge_file, args.use_obs_image,
+                      args.use_agent_graph,
+                      args.use_world_graph, not args.no_instr, args.instr_arch, not args.no_mem, args.arch)
 
 obss_preprocessor.vocab.save()
 utils.save_model(acmodel, args.model)
@@ -252,7 +254,9 @@ while status['num_frames'] < args.frames:
         agent = ModelAgent(args.model, obss_preprocessor, argmax=True)
         agent.model = acmodel
         agent.model.eval()
-        logs = batch_evaluate(agent, test_env_name, args.val_seed, args.val_episodes, pixel=use_pixel)
+        logs = batch_evaluate(agent, test_env_name, args.val_seed, args.val_episodes, pixel=use_pixel,
+                              vocab_file=args.vocab_file, vocab_kge_file=args.vocab_kge_file,
+                              debug_mode=args.debug_mode)
         agent.model.train()
         mean_return = np.mean(logs["return_per_episode"])
         success_rate = np.mean([1 if r > 0 else 0 for r in logs['return_per_episode']])

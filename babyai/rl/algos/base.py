@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
-import numpy
+import numpy as np
 
 from babyai.rl.format import default_preprocess_obss
 from babyai.rl.utils import DictList, ParallelEnv
@@ -79,8 +79,9 @@ class BaseAlgo(ABC):
 
         shape = (self.num_frames_per_proc, self.num_procs)
 
-        self.obs = self.env.reset()
+        self.obs, self.graph_info = self.env.reset()
         self.obss = [None]*(shape[0])
+        self.graph_infos = [None]*(shape[0])
 
         self.memory = torch.zeros(shape[1], self.acmodel.memory_size, device=self.device)
         self.memories = torch.zeros(*shape, self.acmodel.memory_size, device=self.device)
@@ -133,7 +134,11 @@ class BaseAlgo(ABC):
 
             preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
             with torch.no_grad():
-                model_results = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1))
+                prev_action_rep = [g.prev_act_rep for g in self.graph_info]
+                graph_rep = [g.graph_state_rep for g in self.graph_info]
+                agent_graph_rep = [g.agent_graph_state_rep for g in self.graph_info]
+                model_results = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1), prev_action_rep,
+                                             graph_rep, agent_graph_rep)
                 dist = model_results['dist']
                 value = model_results['value']
                 memory = model_results['memory']
@@ -141,7 +146,7 @@ class BaseAlgo(ABC):
 
             action = dist.sample()
 
-            obs, reward, done, env_info = self.env.step(action.cpu().numpy())
+            obs, reward, done, env_info, graph_info = self.env.step(action.cpu().numpy())
             if self.aux_info:
                 env_info = self.aux_info_collector.process(env_info)
                 # env_info = self.process_aux_info(env_info)
@@ -150,6 +155,9 @@ class BaseAlgo(ABC):
 
             self.obss[i] = self.obs
             self.obs = obs
+
+            self.graph_infos[i] = self.graph_info
+            self.graph_info = graph_info
 
             self.memories[i] = self.memory
             self.memory = memory
@@ -191,7 +199,11 @@ class BaseAlgo(ABC):
 
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
         with torch.no_grad():
-            next_value = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1))['value']
+            prev_action_rep = [g.prev_act_rep for g in self.graph_info]
+            graph_rep = [g.graph_state_rep for g in self.graph_info]
+            agent_graph_rep = [g.agent_graph_state_rep for g in self.graph_info]
+            next_value = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1), prev_action_rep,
+                                      graph_rep, agent_graph_rep)['value']
 
         for i in reversed(range(self.num_frames_per_proc)):
             next_mask = self.masks[i+1] if i < self.num_frames_per_proc - 1 else self.mask
@@ -208,6 +220,9 @@ class BaseAlgo(ABC):
         exps.obs = [self.obss[i][j]
                     for j in range(self.num_procs)
                     for i in range(self.num_frames_per_proc)]
+        exps.ginfos = np.array([self.graph_infos[i][j]
+                    for j in range(self.num_procs)
+                    for i in range(self.num_frames_per_proc)], dtype=object)
         # In commments below T is self.num_frames_per_proc, P is self.num_procs,
         # D is the dimensionality
 

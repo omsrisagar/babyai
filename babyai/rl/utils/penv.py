@@ -11,7 +11,7 @@ def worker(conn, env):
             conn.send((obs, reward, done, info, graph_info))
         elif cmd == "reset":
             obs, graph_info = env.reset()
-            conn.send(obs, graph_info)
+            conn.send((obs, graph_info))
         else:
             raise NotImplementedError
 
@@ -22,8 +22,8 @@ class ParallelEnv(gym.Env):
         assert len(envs) >= 1, "No environment given."
 
         self.envs = envs
-        self.observation_space = self.envs[0].observation_space
-        self.action_space = self.envs[0].action_space
+        self.observation_space = self.envs[0].env.observation_space
+        self.action_space = self.envs[0].env.action_space
 
         self.locals = []
         self.processes = []
@@ -37,17 +37,18 @@ class ParallelEnv(gym.Env):
             self.processes.append(p)
 
     def reset(self):
+        obs, graph_info = self.envs[0].reset()
         for local in self.locals:
             local.send(("reset", None))
-        results = [self.envs[0].reset()] + [local.recv() for local in self.locals]
+        results = zip(*[(obs, graph_info)] + [local.recv() for local in self.locals])
         return results
 
     def step(self, actions):
-        for local, action in zip(self.locals, actions[1:]):
-            local.send(("step", action))
         obs, reward, done, info, graph_info = self.envs[0].step(actions[0])
         if done:
             obs, graph_info = self.envs[0].reset()
+        for local, action in zip(self.locals, actions[1:]):
+            local.send(("step", action))
         results = zip(*[(obs, reward, done, info, graph_info)] + [local.recv() for local in self.locals])
         return results
 

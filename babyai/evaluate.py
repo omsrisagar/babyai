@@ -1,6 +1,7 @@
 import numpy as np
 import gym
 from gym_minigrid.wrappers import RGBImgPartialObsWrapper
+from babyai.rl.utils.env import KGEnv
 
 
 # Returns the performance of the agent on the environment for a particular number of episodes.
@@ -62,12 +63,13 @@ class ManyEnvs(gym.Env):
         self.done = [False] * len(self.envs)
 
     def seed(self, seeds):
-        [env.seed(seed) for seed, env in zip(seeds, self.envs)]
+        [env.set_seed(seed) for seed, env in zip(seeds, self.envs)]
 
     def reset(self):
-        many_obs = [env.reset() for env in self.envs]
+        results = [env.reset() for env in self.envs]
         self.done = [False] * len(self.envs)
-        return many_obs
+        results = zip(*results)
+        return results
 
     def step(self, actions):
         self.results = [env.step(action) if not done else self.last_results[i]
@@ -82,14 +84,13 @@ class ManyEnvs(gym.Env):
 
 
 # Returns the performance of the agent on the environment for a particular number of episodes.
-def batch_evaluate(agent, env_name, seed, episodes, return_obss_actions=False, pixel=False):
+def batch_evaluate(agent, env_name, seed, episodes, return_obss_actions=False, pixel=False, vocab_file=None,
+                   vocab_kge_file=None, debug_mode=None):
     num_envs = min(256, episodes)
 
     envs = []
     for i in range(num_envs):
-        env = gym.make(env_name)
-        if pixel:
-            env = RGBImgPartialObsWrapper(env)
+        env = KGEnv(env_name, pixel, 100 * seed + i, vocab_file, vocab_kge_file, debug_mode)
         envs.append(env)
     env = ManyEnvs(envs)
 
@@ -105,7 +106,7 @@ def batch_evaluate(agent, env_name, seed, episodes, return_obss_actions=False, p
         seeds = range(seed + i * num_envs, seed + (i + 1) * num_envs)
         env.seed(seeds)
 
-        many_obs = env.reset()
+        many_obs, many_ginfos = env.reset()
 
         cur_num_frames = 0
         num_frames = np.zeros((num_envs,), dtype='int64')
@@ -115,13 +116,13 @@ def batch_evaluate(agent, env_name, seed, episodes, return_obss_actions=False, p
             obss = [[] for _ in range(num_envs)]
             actions = [[] for _ in range(num_envs)]
         while (num_frames == 0).any():
-            action = agent.act_batch(many_obs)['action']
+            action = agent.act_batch(many_obs, many_ginfos)['action']
             if return_obss_actions:
                 for i in range(num_envs):
                     if not already_done[i]:
                         obss[i].append(many_obs[i])
                         actions[i].append(action[i].item())
-            many_obs, reward, done, _ = env.step(action)
+            many_obs, reward, done, _, many_ginfos = env.step(action.cpu().numpy())
             agent.analyze_feedback(reward, done)
             done = np.array(done)
             just_done = done & (~already_done)

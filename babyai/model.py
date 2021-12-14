@@ -27,37 +27,53 @@ class FiLM(nn.Module):
             in_channels=in_channels, out_channels=imm_channels,
             kernel_size=(3, 3), padding=1)
         self.bn1 = nn.BatchNorm2d(imm_channels)
+        self.bn1_1d = nn.BatchNorm1d(imm_channels)
         self.conv2 = nn.Conv2d(
             in_channels=imm_channels, out_channels=out_features,
             kernel_size=(3, 3), padding=1)
         self.bn2 = nn.BatchNorm2d(out_features)
+        self.bn2_1d = nn.BatchNorm1d(out_features)
 
         self.weight = nn.Linear(in_features, out_features)
         self.bias = nn.Linear(in_features, out_features)
 
         self.apply(initialize_parameters)
 
-    def forward(self, x, y):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = self.conv2(x)
-        weight = self.weight(y).unsqueeze(2).unsqueeze(3)
-        bias = self.bias(y).unsqueeze(2).unsqueeze(3)
-        out = x * weight + bias
-        return F.relu(self.bn2(out))
+    def forward(self, x, y, use_conv=True):
+        if use_conv:
+            x = F.relu(self.bn1(self.conv1(x)))
+            x = self.conv2(x)
+            weight = self.weight(y).unsqueeze(2).unsqueeze(3)
+            bias = self.bias(y).unsqueeze(2).unsqueeze(3)
+            out = x * weight + bias
+            return F.relu(self.bn2(out))
+        else:
+            # x = F.relu(x)
+            x = F.relu(self.bn1_1d(x))
+            weight = self.weight(y)
+            bias = self.bias(y)
+            out = x * weight + bias
+            # return F.relu(out)
+            return F.relu(self.bn2_1d(out))
 
 class StateNetwork(nn.Module):
-    def __init__(self, gat_emb_size, word_emb, vocab, embedding_size, dropout_ratio):
+    def __init__(self, gat_emb_size, word_emb, vocab, vocab_kge_file, embedding_size, dropout_ratio):
         super(StateNetwork, self).__init__()
         self.vocab = vocab
         self.vocab_size = len(self.vocab)
-        self.embedding_size = embedding_size
+        self.embedding_size = embedding_size # 128
         self.dropout_ratio = dropout_ratio
         self.gat_emb_size = gat_emb_size
         #self.params = params
         self.gat = GAT(gat_emb_size, 3, dropout_ratio, 0.2, 1)
-        self.state_ent_emb = word_emb
-        self.fc1 = nn.Linear(self.state_ent_emb.weight.size()[0] * 3 * 1, 100)
-
+        self.word_emb = word_emb # 100 x 128
+        self.vocab_kge = self.load_vocab_kge(vocab_kge_file)
+        #self.init_state_ent_emb(params['embedding_size'])
+        self.state_ent_emb = nn.Embedding.from_pretrained(torch.zeros((len(self.vocab_kge),
+                                                                       self.embedding_size)), freeze=False) # 438 x 128
+        self.fc1 = nn.Linear(self.state_ent_emb.weight.size()[0] * 3 * 1, self.embedding_size)
+        self.init_state_ent_emb(self.embedding_size)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def init_state_ent_emb(self, emb_size):
         embeddings = torch.zeros((len(self.vocab_kge), emb_size))
@@ -65,15 +81,16 @@ class StateNetwork(nn.Module):
             graph_node_text = self.vocab_kge[i].split('_')
             graph_node_ids = []
             for w in graph_node_text:
-                if w in self.vocab.keys():
-                    if self.vocab[w] < len(self.vocab) - 2:
-                        graph_node_ids.append(self.vocab[w])
-                    else:
-                        graph_node_ids.append(1)
-                else:
-                    graph_node_ids.append(1)
+                graph_node_ids.append(self.vocab[w]) # each word must be in vocab
+                # if w in self.vocab.keys():
+                #     if self.vocab[w] < len(self.vocab) - 2:
+                #         graph_node_ids.append(self.vocab[w])
+                #     else:
+                #         graph_node_ids.append(1)
+                # else:
+                #     graph_node_ids.append(1)
             graph_node_ids = torch.LongTensor(graph_node_ids)
-            cur_embeds = self.pretrained_embeds(graph_node_ids)
+            cur_embeds = self.word_emb(graph_node_ids)
 
             cur_embeds = cur_embeds.mean(dim=0)
             embeddings[i, :] = cur_embeds
@@ -81,17 +98,18 @@ class StateNetwork(nn.Module):
 
     def load_vocab_kge(self, vocab_file):
         ent = {}
+        id = 0
         with open(vocab_file, 'r') as f:
             for line in f:
-                e, eid = line.split('\t')
-                ent[int(eid.strip())] = e.strip()
+                ent[id] = line.strip()
+                id += 1
         return ent
 
     def forward(self, graph_rep):
         out = []
         for g in graph_rep:
-            node_feats, adj = g # node_feats are not used! Instead using a zero initialized 362x50 vector
-            adj = torch.IntTensor(adj)
+            node_feats, adj = g # node_feats are not used, but I think state_ent_emb and adj can express that info
+            adj = torch.tensor(adj, dtype=torch.int, device=self.device)
             x = self.gat.forward(self.state_ent_emb.weight, adj).view(-1)
             out.append(x.unsqueeze_(0))
         out = torch.cat(out)
@@ -126,10 +144,12 @@ class GraphAttentionLayer(nn.Module):
         self.out_features = out_features
         self.alpha = alpha
         self.concat = concat
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.W = nn.Parameter(nn.init.xavier_uniform_(torch.Tensor(in_features, out_features).type(
-            torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
-        self.a = nn.Parameter(nn.init.xavier_uniform_(torch.Tensor(2*out_features, 1).type(torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
+        self.W = nn.Parameter(nn.init.xavier_uniform_(torch.empty((in_features, out_features), device=self.device),
+                                                      gain=np.sqrt(2.0)), requires_grad=True) # 32 x 3
+        self.a = nn.Parameter(nn.init.xavier_uniform_(torch.empty((2*out_features, 1), device=self.device),
+                                                      gain=np.sqrt( 2.0)), requires_grad=True) # 6 x 1
 
         self.leakyrelu = nn.LeakyReLU(self.alpha)
 
@@ -174,10 +194,12 @@ class ImageBOWEmbedding(nn.Module):
 class ACModel(nn.Module, babyai.rl.RecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128, gat_emb_size=64,agent_gat_emb_size=32,
-                 dropout_ratio=0.2, vocab=None, use_obs_image=True, use_agent_graph=True, use_world_graph=False,
+                 dropout_ratio=0.2, vocab=None, vocab_kge_file=None, use_obs_image=True, use_agent_graph=True,
+                 use_world_graph=False,
                  use_instr=False, lang_model="gru", use_memory=False, arch="bow_endpool_res", aux_info=None):
         super().__init__()
 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         endpool = 'endpool' in arch
         use_bow = 'bow' in arch
         pixel = 'pixel' in arch
@@ -260,15 +282,27 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                 self.controllers.append(mod)
                 self.add_module('FiLM_' + str(ni), mod)
 
-        self.state_gat = StateNetwork(self.gat_emb_size, self.word_embedding, self.vocab, self.instr_dim,
-                                      self.dropout_ratio)
-        self.agent_state_gat = StateNetwork(self.agent_gat_emb_size, self.vocab, self.instr_dim, self.dropout_ratio)
+        self.state_gat = StateNetwork(self.gat_emb_size, self.word_embedding, self.vocab, vocab_kge_file,
+                                      self.instr_dim, self.dropout_ratio)
+        self.agent_state_gat = StateNetwork(self.agent_gat_emb_size, self.word_embedding, self.vocab,
+                                            vocab_kge_file, self.instr_dim, self.dropout_ratio)
 
         # Define memory and resize image embedding
         self.embedding_size = self.image_dim
+        in_dim = 0
+        if self.use_obs_image:
+            in_dim += self.embedding_size
+        if self.use_agent_graph or self.use_world_graph:
+            in_dim += self.embedding_size
+        if self.use_agent_graph:
+            in_dim += self.embedding_size
+        if self.use_world_graph:
+            in_dim += self.embedding_size
         if self.use_memory:
-            self.memory_rnn = nn.LSTMCell(self.image_dim, self.memory_dim)
+            self.memory_rnn = nn.LSTMCell(in_dim, self.memory_dim)
             self.embedding_size = self.semi_memory_size
+        else:
+            self.fc_no_mem = nn.Linear(in_dim, self.semi_memory_size)
 
         # Define actor's model
         self.actor = nn.Sequential(
@@ -339,7 +373,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
 
     def forward(self, obs, memory, prev_action, graph_rep, agent_graph_rep, instr_embedding=None):
         if self.use_instr and instr_embedding is None:
-            instr_embedding = self._get_instr_embedding(obs.instr)
+            instr_embedding = self._get_instr_embedding(obs.instr) # 64 x 128
         if self.use_instr and self.lang_model == "attgru":
             # outputs: B x L x D
             # memory: B x M
@@ -360,41 +394,68 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             attention = F.softmax(pre_softmax, dim=1)
             instr_embedding = (instr_embedding * attention[:, :, None]).sum(1)
 
+        final_emb = torch.empty((obs.image.size()[0], 0), device=self.device)
         # image embedding
         if self.use_obs_image:
-            x = torch.transpose(torch.transpose(obs.image, 1, 3), 2, 3)
+            img_emb = torch.transpose(torch.transpose(obs.image, 1, 3), 2, 3)
 
             if 'pixel' in self.arch:
-                x /= 256.0
-            x = self.image_conv(x)
+                img_emb /= 256.0
+            img_emb = self.image_conv(img_emb) # 64 (num_procs) x 128 x 7 x 7
+            x = img_emb
+            if self.use_instr:
+                for controller in self.controllers:
+                    out = controller(x, instr_embedding) # same dim as img_emb 64x128x7x7
+                    if self.res:
+                        out += x
+                    x = out
+            x = F.relu(self.film_pool(x)) # 64 x 128 x 1 x 1
+            x = x.reshape(x.shape[0], -1) # 64 x 128
+            final_emb = torch.cat([final_emb, x], dim=1)
 
         # previous action embedding
         if self.use_agent_graph or self.use_world_graph:
-            prev_action_emb = self.word_embedding(prev_action)
-            x = torch.cat([x, p])
+            prev_action_emb = self.word_embedding(torch.tensor(prev_action, device=self.device))
+            x = prev_action_emb
+            if self.use_instr:
+                for controller in self.controllers:
+                    out = controller(x, instr_embedding, use_conv=False) # same dim as img_emb 64x128x7x7
+                    if self.res:
+                        out += x
+                    x = out
+            final_emb = torch.cat([final_emb, x], dim=1)
 
         # world_graph embedding
         if self.use_world_graph:
             world_graph_emb = self.state_gat.forward(graph_rep)
+            x = world_graph_emb
+            if self.use_instr:
+                for controller in self.controllers:
+                    out = controller(x, instr_embedding, use_conv=False) # same dim as img_emb 64x128x7x7
+                    if self.res:
+                        out += x
+                    x = out
+            final_emb = torch.cat([final_emb, x], dim=1)
 
-        # concatenate x with prev_action, graph state, agent graph state based on args
-
-        if self.use_instr:
-            for controller in self.controllers:
-                out = controller(x, instr_embedding)
-                if self.res:
-                    out += x
-                x = out
-        x = F.relu(self.film_pool(x))
-        x = x.reshape(x.shape[0], -1)
+        # agent graph embedding
+        if self.use_agent_graph:
+            agent_graph_emb = self.agent_state_gat.forward(agent_graph_rep)
+            x = agent_graph_emb
+            if self.use_instr:
+                for controller in self.controllers:
+                    out = controller(x, instr_embedding, use_conv=False) # same dim as img_emb 64x128x7x7
+                    if self.res:
+                        out += x
+                    x = out
+            final_emb = torch.cat([final_emb, x], dim=1)
 
         if self.use_memory:
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])
-            hidden = self.memory_rnn(x, hidden)
+            hidden = self.memory_rnn(final_emb, hidden)
             embedding = hidden[0]
             memory = torch.cat(hidden, dim=1)
         else:
-            embedding = x
+            embedding = self.fc_no_mem(final_emb)
 
         if hasattr(self, 'aux_info') and self.aux_info:
             extra_predictions = {info: self.extra_heads[info](embedding) for info in self.extra_heads}

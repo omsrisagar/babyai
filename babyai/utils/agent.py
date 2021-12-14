@@ -48,7 +48,7 @@ class ModelAgent(Agent):
         self.argmax = argmax
         self.memory = None
 
-    def act_batch(self, many_obs):
+    def act_batch(self, many_obs, many_ginfos):
         if self.memory is None:
             self.memory = torch.zeros(
                 len(many_obs), self.model.memory_size, device=self.device)
@@ -57,7 +57,10 @@ class ModelAgent(Agent):
         preprocessed_obs = self.obss_preprocessor(many_obs, device=self.device)
 
         with torch.no_grad():
-            model_results = self.model(preprocessed_obs, self.memory)
+            prev_action_rep = [g.prev_act_rep for g in many_ginfos]
+            graph_rep = [g.graph_state_rep for g in many_ginfos]
+            agent_graph_rep = [g.agent_graph_state_rep for g in many_ginfos]
+            model_results = self.model(preprocessed_obs, self.memory, prev_action_rep, graph_rep, agent_graph_rep)
             dist = model_results['dist']
             value = model_results['value']
             self.memory = model_results['memory']
@@ -71,8 +74,8 @@ class ModelAgent(Agent):
                 'dist': dist,
                 'value': value}
 
-    def act(self, obs):
-        return self.act_batch([obs])
+    def act(self, obs, ginfo):
+        return self.act_batch([obs], [ginfo])
 
     def analyze_feedback(self, reward, done):
         if isinstance(done, tuple):

@@ -85,8 +85,15 @@ class PPOAlgo(BaseAlgo):
                     sb = exps[inds + i]
 
                     # Compute loss
+                    ginfos = sb.ginfos
+                    prev_action_rep = [g[0] for g in ginfos]
+                    graph_rep = [g[2] for g in ginfos]
+                    agent_graph_rep = [g[4] for g in ginfos]
+                    # prev_action_rep = [g.prev_action_rep for g in ginfos]
+                    # graph_rep = [g.graph_state_rep for g in ginfos]
+                    # agent_graph_rep = [g.agent_graph_state_rep for g in ginfos]
 
-                    model_results = self.acmodel(sb.obs, memory * sb.mask)
+                    model_results = self.acmodel(sb.obs, memory * sb.mask, prev_action_rep, graph_rep, agent_graph_rep)
                     dist = model_results['dist']
                     value = model_results['value']
                     memory = model_results['memory']
