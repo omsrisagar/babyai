@@ -264,15 +264,20 @@ class StateAction(object):
             #     for ed in prev_room_subgraph.edges:
             #         rules.append((ed[0], prev_room_subgraph[ed]['rel'], ed[1]))
 
-        for rule in add_rules:
-            self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
-
         for rule in remove_rules:
             self.graph_state.remove_edge(rule[0], rule[2])
+
+        for rule in add_rules:
+            self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
 
         for rule in agent_rules:
             self.agent_graph_state.add_edge(rule[0], rule[2], rel=rule[1])
 
+        # for node in self.graph_state.nodes:
+        #     if 'unlocked' in node:
+        #         in_degree = self.graph_state.in_degree(node)
+        #         assert in_degree != 1, f'{node}: {in_degree}'
+        #
         return add_rules, remove_rules, agent_rules
 
     def get_state_rep_kge(self):

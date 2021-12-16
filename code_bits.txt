@@ -1,0 +1,129 @@
+room = self.room_grid[j][i]
+
+        # Find a position that is not right in front of an object
+        while True:
+            super().place_agent(room.top, room.size, rand_dir, max_tries=1000)
+            front_cell = self.grid.get(*self.front_pos)
+
+start_room = self.room_from_pos(*self.agent_pos)
+
+room.door_pos[k] or room.doors[k]
+
+room.locked or room.neighbors[k].locked
+
+room.objs
+
+['blue', 'green', 'grey', 'purple', 'red', 'yellow']
+
+['key', 'ball', 'box', 'door']
+
+
+env.room_from_pos(*env.agent_pos); here env is RoomGrid
+
+cell = env.grid.get(i, j)
+
+
+cell encoding: (OBJECT_TO_IDX[self.type], COLOR_TO_IDX[self.color], 0)
+
+Can come to know for all rooms:
+where are the door positions and attributes (color, locked, open, etc.)
+objs in the room
+neighbours of the room
+
+check that gym/wrappers/order_enforcing.py also needs to be updated to have graph_info
+penv.py
+levelgen.py
+minigrid.py
+
+note that init_state_ent_emb is not called!
+models.py: def init_state_ent_emb(self, emb_size):
+try to call this func before we do graph processing
+
+OBJECT_TO_IDX = {
+    'unseen'        : 0,
+    'empty'         : 1,
+    'wall'          : 2,
+    'floor'         : 3,
+    'door'          : 4,
+    'key'           : 5,
+    'ball'          : 6,
+    'box'           : 7,
+    'goal'          : 8,
+    'lava'          : 9,
+    'agent'         : 10,
+}
+
+for all objs record color and type; for door record also is_locked, is_open.
+obj.color
+obj.type
+obj.contains
+obj.is_locked
+obj.is_open
+
+grid, vis_mask = Grid.decode(obs['image'])
+
+minigrid.py:1099 step() has actions
+
+
+full grid with agent pos and obs:
+from matplotlib import pyplot as plt
+qp = self.render()
+plt.imshow(qp)
+plt.show()
+plt.savefig('example_grid_all.png')
+
+full grid:
+from matplotlib import pyplot as plt
+qp = self.grid.render(tile_size=50)
+plt.imshow(qp)
+plt.show()
+plt.savefig('example_grid_full.png')
+
+agent obs:
+from matplotlib import pyplot as plt
+qp = self.get_obs_render(image, 50)
+plt.imshow(qp)
+plt.show()
+plt.savefig('example_grid_agent.png')
+
+extra codes:
+
+from matplotlib import pyplot as plt
+grid, vis_mask = self.gen_obs_grid()
+image = grid.encode(vis_mask)
+qp = self.get_obs_render(image, 30)
+plt.imshow(qp)
+plt.show()
+plt.savefig('example_grid.png')
+
+qp = self.grid.render(tile_size=50, agent_pos=self.agent_pos, agent_dir=self.agent_dir, self.grid.process_vis(self.agent_pos))
+
+from matplotlib import pyplot as plt
+qp = self.env.grid.render(tile_size=50, agent_pos=self.env.agent_pos, agent_dir=self.env.agent_dir, self.env.grid.process_vis(self.env.agent_pos))
+plt.imshow(qp)
+plt.show()
+plt.savefig('example_grid_agent.png')
+
+
+ego_rel_indx = {-1: 'agent', 0: 'left', 1: 'front', 2: 'right', 3: 'far_left', 4: 'front_left', 5: 'far_front', 6: 'front_right', 7: 'far_right' }
+ego_rel_map = [4, 4, 4, 5, 6, 6, 6, 4, 4, 4, 5, 6, 6, 6,4, 4, 4, 5, 6, 6, 6,4, 4, 4, 5, 6, 6, 6,4, 4, 4, 5, 6, 6, 6, 4, 4, 4, 1, 6, 6, 6,3,3,0,-1,2,7,7]
+ego_rel_map = np.array(ego_rel_map)
+ego_grid = np.array(grid.grid)
+viewable_objs_map = ego_grid != None
+viewable_objs = ego_grid[viewable_objs_map]
+viewable_objs_rel = ego_rel_map[viewable_objs_map]
+
+import matplotlib.pyplot as plt
+import networkx as nx
+pos = nx.spring_layout(graph_state)
+edge_labels = {e: graph_state.edges[e]['rel'] for e in graph_state.edges}
+print(edge_labels)
+nx.draw_networkx_edge_labels(graph_state, pos, edge_labels)
+nx.draw(graph_state, pos=pos, with_labels=True, node_size=1000, font_size=5)
+plt.show()
+
+location where raw_obs is removed:
+/export/home/tulsi1/srikanth/miniconda3/envs/vln/lib/python3.6/site-packages/gym/core.py
+
+
+
