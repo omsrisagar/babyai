@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="goto_debug_graph" type="PythonConfigurationType" factoryName="Python">
+  <configuration default="false" name="unlock_graph" type="PythonConfigurationType" factoryName="Python">
     <module name="babyai" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
@@ -13,7 +13,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/scripts/train_rl.py" />
-    <option name="PARAMETERS" value="--env BabyAI-GoTo-v0 --arch pixels_endpool_res --model debug_graph --instr-arch attgru --procs 1 --debug --val-episodes 1 --seed 2384" />
+    <option name="PARAMETERS" value="--env BabyAI-Unlock-v0 --arch pixels_endpool_res --model unlock_graph --procs 16 --val-episodes 5" />
     <option name="SHOW_COMMAND_LINE" value="true" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />
