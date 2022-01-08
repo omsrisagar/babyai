@@ -5,6 +5,7 @@ import json
 import os
 import os.path as osp
 import numpy as np
+import time
 
 DIV_LINE_WIDTH = 50
 
@@ -28,13 +29,14 @@ def plot_data(data, xaxis='Epoch', value="AverageEpRet", condition="Condition1",
             datum[value] = smoothed_x
 
     if isinstance(data, list):
-        lens = [len(df) for df in data]
-        data = [df[:min(lens)] for df in data]
+        max_values = [df['episodes'].values.max() for df in data]
+        min_conds = [df['episodes'] <= min(max_values) for df in data]
+        data = [df[cond] for df, cond in zip(data, min_conds)]
         data = pd.concat(data, ignore_index=True)
     sns.set(style="darkgrid", font_scale=1.5)
     # data.rename(columns={xaxis: 'Number of frames/timesteps', value: 'Mean Reward'})
     p = sns.lineplot(data=data, x=xaxis, y=value, hue=condition, ci='sd', **kwargs)
-    p.set(xlabel='Number of frames/timesteps', ylabel='Mean Reward')
+    # p.set(xlabel='Number of Episodes', ylabel='Value Loss')
     """
     If you upgrade to any version of Seaborn greater than 0.8.1, switch from 
     tsplot to lineplot replacing L29 with:
@@ -89,11 +91,9 @@ def get_datasets(logdir, condition=None):
             except:
                 print('Could not read from %s'%os.path.join(root,'log.csv'))
                 continue
-            performance = 'return_mean'
             exp_data.insert(len(exp_data.columns),'Unit',unit)
             exp_data.insert(len(exp_data.columns),'Condition1',condition1)
             exp_data.insert(len(exp_data.columns),'Condition2',condition2)
-            exp_data.insert(len(exp_data.columns),'Performance',exp_data[performance])
             datasets.append(exp_data)
     return datasets
 
@@ -160,7 +160,8 @@ def make_plots(all_logdirs, legend=None, xaxis=None, values=None, count=False,
     for value in values:
         plt.figure()
         plot_data(data, xaxis=xaxis, value=value, condition=condition, smooth=smooth, estimator=estimator)
-    plt.show()
+        plt.show()
+        time.sleep(0.5)
 
 
 def main():
