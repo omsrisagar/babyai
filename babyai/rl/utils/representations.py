@@ -34,13 +34,19 @@ class StateAction(object):
         if self.debug_mode:
             self.prev_state_pickle = pickle.dumps(('prev_env', 'pre_action')) # env, action in pickle form
 
-    def visualize(self, graph_state):
+    def visualize(self, graph_state, node_size=200, font_size=10):
+        import matplotlib
+        matplotlib.use('Qt5Agg')  # enable for interactive plots
         import matplotlib.pyplot as plt
         pos = nx.spring_layout(graph_state)
+        plt.figure(figsize=(8, 8))
+        plt.axis('off')
         edge_labels = {e: graph_state.edges[e]['rel'] for e in graph_state.edges}
+        edge_labels = {k : v.split()[0] for k, v in edge_labels.items()}
         print(edge_labels)
         nx.draw_networkx_edge_labels(graph_state, pos, edge_labels)
-        nx.draw(graph_state, pos=pos, with_labels=True, node_size=200, font_size=10)
+        nx.draw(graph_state, pos=pos, with_labels=True, node_size=node_size, font_size=font_size)
+        plt.tight_layout()
         plt.show()
 
     def get_obj_desc_old(self, obj, env):

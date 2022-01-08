@@ -167,7 +167,7 @@ csv_path = os.path.join(utils.get_log_dir(args.model), 'log.csv')
 first_created = not os.path.exists(csv_path)
 # we don't buffer data going in the csv log, cause we assume
 # that one update will take much longer that one write to the log
-csv_writer = csv.writer(open(csv_path, 'a', 1))
+csv_writer = csv.writer(open(csv_path, 'a', 1)) # 1 here indicates 1 line of buffering (before writing to file)
 if first_created:
     csv_writer.writerow(header)
 
