@@ -68,7 +68,6 @@ class StateNetwork(nn.Module):
         self.gat = GAT(gat_emb_size, 3, dropout_ratio, 0.2, 1)
         self.word_emb = word_emb # 100 x 128
         self.vocab_kge = self.load_vocab_kge(vocab_kge_file)
-        #self.init_state_ent_emb(params['embedding_size'])
         self.state_ent_emb = nn.Embedding.from_pretrained(torch.zeros((len(self.vocab_kge),
                                                                        self.embedding_size)), freeze=False) # 438 x 128
         self.fc1 = nn.Linear(self.state_ent_emb.weight.size()[0] * 3 * 1, self.embedding_size)
@@ -195,7 +194,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
     def __init__(self, obs_space, action_space,
                  image_dim=128, memory_dim=128, instr_dim=128, gat_emb_size=64,agent_gat_emb_size=32,
                  dropout_ratio=0.2, vocab=None, vocab_kge_file=None, use_obs_image=True, use_agent_graph=True,
-                 use_world_graph=False,
+                 use_world_graph=True, no_film=False,
                  use_instr=False, lang_model="gru", use_memory=False, arch="bow_endpool_res", aux_info=None):
         super().__init__()
 
@@ -223,6 +222,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         self.use_obs_image = use_obs_image
         self.use_agent_graph = use_agent_graph
         self.use_world_graph = use_world_graph
+        self.no_film = no_film
 
         self.obs_space = obs_space
 
@@ -288,16 +288,18 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                                             vocab_kge_file, self.instr_dim, self.dropout_ratio)
 
         # Define memory and resize image embedding
-        self.embedding_size = self.image_dim
+        self.embedding_size = self.image_dim # 128
         in_dim = 0
         if self.use_obs_image:
             in_dim += self.embedding_size
-        if self.use_agent_graph or self.use_world_graph:
+        if self.use_agent_graph or self.use_world_graph: # for prev action embedding
             in_dim += self.embedding_size
         if self.use_agent_graph:
             in_dim += self.embedding_size
         if self.use_world_graph:
             in_dim += self.embedding_size
+        if self.no_film: # as we need to add the instr embedding to the input of LSTM
+            in_dim += self.instr_dim
         if self.use_memory:
             self.memory_rnn = nn.LSTMCell(in_dim, self.memory_dim)
             self.embedding_size = self.semi_memory_size
@@ -417,7 +419,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         if self.use_agent_graph or self.use_world_graph:
             prev_action_emb = self.word_embedding(torch.tensor(prev_action, device=self.device))
             x = prev_action_emb
-            if self.use_instr:
+            if not self.no_film: # do this only if using film i.e., no_film=False
                 for controller in self.controllers:
                     out = controller(x, instr_embedding, use_conv=False) # same dim as img_emb 64x128x7x7
                     if self.res:
@@ -429,7 +431,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         if self.use_world_graph:
             world_graph_emb = self.state_gat.forward(graph_rep)
             x = world_graph_emb
-            if self.use_instr:
+            if not self.no_film:
                 for controller in self.controllers:
                     out = controller(x, instr_embedding, use_conv=False) # same dim as img_emb 64x128x7x7
                     if self.res:
@@ -441,13 +443,17 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
         if self.use_agent_graph:
             agent_graph_emb = self.agent_state_gat.forward(agent_graph_rep)
             x = agent_graph_emb
-            if self.use_instr:
+            if not self.no_film:
                 for controller in self.controllers:
                     out = controller(x, instr_embedding, use_conv=False) # same dim as img_emb 64x128x7x7
                     if self.res:
                         out += x
                     x = out
             final_emb = torch.cat([final_emb, x], dim=1)
+
+        # add instruction embedding if no_film:
+        if self.no_film:
+            final_emb = torch.cat([final_emb, instr_embedding], dim=1)
 
         if self.use_memory:
             hidden = (memory[:, :self.semi_memory_size], memory[:, self.semi_memory_size:])

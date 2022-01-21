@@ -55,10 +55,12 @@ parser.add_argument('--dropout_ratio', default=0.2, type=float)
 parser.add_argument('--no-world-graph', dest='use_world_graph', action='store_false')
 parser.add_argument('--no-agent-graph', dest='use_agent_graph', action='store_false')
 parser.add_argument('--no-obs-image', dest='use_obs_image', action='store_false')
+parser.add_argument('--no-film', dest='no_film', action='store_true', help='applies only to kg representations')
 parser.add_argument('--debug', dest='debug_mode', action='store_true')
 parser.set_defaults(use_world_graph=True)
 parser.set_defaults(use_agent_graph=True)
 parser.set_defaults(use_obs_image=True)
+parser.set_defaults(no_film=False)
 parser.set_defaults(debug_mode=False)
 args = parser.parse_args()
 
@@ -114,8 +116,8 @@ else:
     acmodel = ACModel(obss_preprocessor.obs_space, envs[0].env.action_space,
                       args.image_dim, args.memory_dim, args.instr_dim, args.gat_emb_size, args.agent_gat_emb_size,
                       args.dropout_ratio, envs[0].vocab, args.vocab_kge_file, args.use_obs_image,
-                      args.use_agent_graph,
-                      args.use_world_graph, not args.no_instr, args.instr_arch, not args.no_mem, args.arch)
+                      args.use_agent_graph, args.use_world_graph, args.no_film, not args.no_instr, args.instr_arch,
+                                                                       not args.no_mem, args.arch)
 
 obss_preprocessor.vocab.save()
 utils.save_model(acmodel, args.model)
