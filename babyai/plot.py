@@ -1,5 +1,7 @@
 import seaborn as sns
 import pandas as pd
+import matplotlib
+matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 import json
 import os
@@ -126,7 +128,7 @@ def get_all_datasets(all_logdirs, legend=None, select=None, exclude=None):
     launch many jobs at once with similar names.
     """
     if select is not None:
-        logdirs = [log for log in logdirs if all(x in log for x in select)]
+        logdirs = [log for log in logdirs if any(x in log for x in select)]
     if exclude is not None:
         logdirs = [log for log in logdirs if all(not(x in log) for x in exclude)]
 
