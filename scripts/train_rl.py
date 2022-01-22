@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Script to train the agent through reinforcment learning.
 """
@@ -250,11 +248,12 @@ while status['num_frames'] < args.frames:
         obss_preprocessor.vocab.save()
         with open(status_path, 'w') as dst:
             json.dump(status, dst)
-            utils.save_model(acmodel, args.model)
+            # utils.save_model(acmodel, args.model)
+            utils.save_model(algo.acmodel, args.model)
 
         # Testing the model before saving
-        agent = ModelAgent(args.model, obss_preprocessor, argmax=True)
-        agent.model = acmodel
+        agent = ModelAgent(args.model, obss_preprocessor, argmax=False)
+        # agent.model = acmodel
         agent.model.eval()
         logs = batch_evaluate(agent, test_env_name, args.val_seed, args.val_episodes, pixel=use_pixel,
                               vocab_file=args.vocab_file, vocab_kge_file=args.vocab_kge_file,
