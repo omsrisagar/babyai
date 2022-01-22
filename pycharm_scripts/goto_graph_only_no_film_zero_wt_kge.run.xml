@@ -1,19 +1,19 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="goto_orig" type="PythonConfigurationType" factoryName="Python">
+  <configuration default="false" name="goto_graph_only_no_film_zero_wt_kge" type="PythonConfigurationType" factoryName="Python">
     <module name="babyai" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
       <env name="PYTHONUNBUFFERED" value="1" />
     </envs>
-    <option name="SDK_HOME" value="/export/home/tulsi1/srikanth/miniconda3/envs/vln/bin/python" />
+    <option name="SDK_HOME" value="" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/scripts" />
-    <option name="IS_MODULE_SDK" value="false" />
+    <option name="IS_MODULE_SDK" value="true" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/scripts/train_rl.py" />
-    <option name="PARAMETERS" value="--env BabyAI-GoTo-v0 --arch pixels_endpool_res --model goto_orig" />
+    <option name="PARAMETERS" value="--env BabyAI-GoTo-v0 --no-obs-image --no-film --model goto_graph_only_no_film_zero_wt_kge --procs 6 --val-episodes 6" />
     <option name="SHOW_COMMAND_LINE" value="true" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

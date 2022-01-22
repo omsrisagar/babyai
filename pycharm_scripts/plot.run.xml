@@ -3,9 +3,6 @@
     <module name="babyai" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
-    <envs>
-      <env name="PYTHONUNBUFFERED" value="1" />
-    </envs>
     <option name="SDK_HOME" value="/export/home/tulsi1/srikanth/miniconda3/envs/vln/bin/python" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/scripts" />
     <option name="IS_MODULE_SDK" value="false" />
@@ -13,7 +10,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/babyai/plot.py" />
-    <option name="PARAMETERS" value="./logs --select orig zero_wt_kge --smooth 1 --xaxis episodes --value return_mean policy_loss value_loss" />
+    <option name="PARAMETERS" value="./logs --select orig graph_only --smooth 100 --xaxis episodes --value return_mean policy_loss value_loss" />
     <option name="SHOW_COMMAND_LINE" value="true" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />
