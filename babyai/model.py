@@ -405,7 +405,8 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                 img_emb /= 256.0
             img_emb = self.image_conv(img_emb) # 64 (num_procs) x 128 x 7 x 7
             x = img_emb
-            if self.use_instr:
+            if not self.no_film:
+            # if self.use_instr:
                 for controller in self.controllers:
                     out = controller(x, instr_embedding) # same dim as img_emb 64x128x7x7
                     if self.res:
