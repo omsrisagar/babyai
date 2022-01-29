@@ -71,7 +71,7 @@ class StateNetwork(nn.Module):
         self.state_ent_emb = nn.Embedding.from_pretrained(torch.zeros((len(self.vocab_kge),
                                                                        self.embedding_size)), freeze=False) # 438 x 128
         self.fc1 = nn.Linear(self.state_ent_emb.weight.size()[0] * 3 * 1, self.embedding_size)
-        self.init_state_ent_emb(self.embedding_size)
+        # self.init_state_ent_emb(self.embedding_size)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def init_state_ent_emb(self, emb_size):
