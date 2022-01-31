@@ -272,15 +272,16 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
             if self.lang_model == 'attgru':
                 self.memory2key = nn.Linear(self.memory_size, self.final_instr_dim)
 
-            num_module = 2
-            self.controllers = []
-            for ni in range(num_module):
-                mod = FiLM(
-                    in_features=self.final_instr_dim,
-                    out_features=128 if ni < num_module-1 else self.image_dim,
-                    in_channels=128, imm_channels=128)
-                self.controllers.append(mod)
-                self.add_module('FiLM_' + str(ni), mod)
+            if not self.no_film:
+                num_module = 2
+                self.controllers = []
+                for ni in range(num_module):
+                    mod = FiLM(
+                        in_features=self.final_instr_dim,
+                        out_features=128 if ni < num_module-1 else self.image_dim,
+                        in_channels=128, imm_channels=128)
+                    self.controllers.append(mod)
+                    self.add_module('FiLM_' + str(ni), mod)
 
         self.state_gat = StateNetwork(self.gat_emb_size, self.word_embedding, self.vocab, vocab_kge_file,
                                       self.instr_dim, self.dropout_ratio)
