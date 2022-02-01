@@ -121,7 +121,9 @@ obss_preprocessor.vocab.save()
 utils.save_model(acmodel, args.model)
 
 if torch.cuda.is_available():
-    acmodel.cuda()
+    device = torch.device("cuda")
+    # acmodel.cuda()
+    acmodel = torch.nn.DataParallel(acmodel).to(device)
 
 # Define actor-critic algo
 
