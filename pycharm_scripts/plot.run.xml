@@ -10,7 +10,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/babyai/plot.py" />
-    <option name="PARAMETERS" value="./logs --select orig no_agent_graph no_world_graph --smooth 100 --xaxis episodes --value return_mean policy_loss value_loss" />
+    <option name="PARAMETERS" value="./logs --select orig lradj --smooth 100 --xaxis episodes --value return_mean policy_loss value_loss" />
     <option name="SHOW_COMMAND_LINE" value="true" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />
