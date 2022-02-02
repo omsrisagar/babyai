@@ -29,6 +29,11 @@ class PPOAlgo(BaseAlgo):
 
         self.optimizer = torch.optim.Adam(self.acmodel.parameters(), lr, (beta1, beta2), eps=adam_eps)
         self.batch_num = 0
+        # Move model to available GPUs
+        if torch.cuda.is_available():
+            # device = torch.device("cuda")
+            # acmodel.cuda()
+            self.acmodel = torch.nn.DataParallel(self.acmodel)
 
     def update_parameters(self):
         # Collect experiences

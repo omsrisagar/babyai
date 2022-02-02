@@ -54,6 +54,8 @@ class ModelAgent(Agent):
                 len(many_obs), self.model.memory_size, device=self.device)
         elif self.memory.shape[0] != len(many_obs):
             raise ValueError("stick to one batch size for the lifetime of an agent")
+        if torch.cuda.is_available():
+            self.model = torch.nn.DataParallel(self.model)
         preprocessed_obs = self.obss_preprocessor(many_obs, device=self.device)
 
         with torch.no_grad():
