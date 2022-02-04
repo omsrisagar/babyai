@@ -26,6 +26,7 @@ class FiLM(nn.Module):
         self.conv1 = nn.Conv2d(
             in_channels=in_channels, out_channels=imm_channels,
             kernel_size=(3, 3), padding=1)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.bn1 = nn.BatchNorm2d(imm_channels)
         self.bn1_1d = nn.BatchNorm1d(imm_channels)
         self.conv2 = nn.Conv2d(
@@ -107,7 +108,8 @@ class StateNetwork(nn.Module):
     def forward(self, graph_rep):
         out = []
         for g in graph_rep:
-            node_feats, adj = g # node_feats are not used, but I think state_ent_emb and adj can express that info
+            # node_feats, adj = g # node_feats are not used, but I think state_ent_emb and adj can express that info
+            adj = g
             adj = torch.tensor(adj, dtype=torch.int, device=self.device)
             x = self.gat.forward(self.state_ent_emb.weight, adj).view(-1)
             out.append(x.unsqueeze_(0))

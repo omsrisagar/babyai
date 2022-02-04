@@ -135,8 +135,11 @@ class BaseAlgo(ABC):
             preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
             with torch.no_grad():
                 prev_action_rep = [g.prev_act_rep for g in self.graph_info]
+                prev_action_rep = torch.tensor(prev_action_rep, device=self.device)
                 graph_rep = [g.graph_state_rep for g in self.graph_info]
+                graph_rep = torch.tensor([grep[1] for grep in graph_rep], device=self.device)
                 agent_graph_rep = [g.agent_graph_state_rep for g in self.graph_info]
+                agent_graph_rep = torch.tensor([grep[1] for grep in agent_graph_rep], device=self.device)
                 model_results = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1), prev_action_rep,
                                              graph_rep, agent_graph_rep)
                 dist = model_results['dist']
