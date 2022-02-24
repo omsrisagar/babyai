@@ -70,7 +70,7 @@ class BaseAlgo(ABC):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.num_procs = len(envs)
-        self.num_frames = self.num_frames_per_proc * self.num_procs
+        self.num_frames = torch.tensor(self.num_frames_per_proc * self.num_procs, device=self.device)
 
 
         assert self.num_frames_per_proc % self.recurrence == 0
@@ -103,10 +103,10 @@ class BaseAlgo(ABC):
         self.log_episode_reshaped_return = torch.zeros(self.num_procs, device=self.device)
         self.log_episode_num_frames = torch.zeros(self.num_procs, device=self.device)
 
-        self.log_done_counter = 0
-        self.log_return = [0] * self.num_procs
-        self.log_reshaped_return = [0] * self.num_procs
-        self.log_num_frames = [0] * self.num_procs
+        self.log_done_counter = torch.tensor(0, device=self.device)
+        self.log_return = torch.tensor([0] * self.num_procs, device=self.device)
+        self.log_reshaped_return = torch.tensor([0] * self.num_procs, device=self.device)
+        self.log_num_frames = torch.tensor([0] * self.num_procs, device=self.device)
 
     def collect_experiences(self): #note that we are collecting experiences with torch.no_grad!
         """Collects rollouts and computes advantages.
@@ -129,7 +129,7 @@ class BaseAlgo(ABC):
             reward, policy loss, value loss, etc.
 
         """
-        for i in range(self.num_frames_per_proc):
+        for i in range(self.num_frames_per_proc): # num_frames_per_proc = episode length = 40
             # Do one agent-environment interaction
 
             preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
@@ -188,7 +188,7 @@ class BaseAlgo(ABC):
             self.log_episode_num_frames += torch.ones(self.num_procs, device=self.device)
 
             for i, done_ in enumerate(done):
-                if done_:
+                if done_: # the following get updated only when done, else they are all zero per proc
                     self.log_done_counter += 1
                     self.log_return.append(self.log_episode_return[i].item())
                     self.log_reshaped_return.append(self.log_episode_reshaped_return[i].item())
@@ -203,8 +203,11 @@ class BaseAlgo(ABC):
         preprocessed_obs = self.preprocess_obss(self.obs, device=self.device)
         with torch.no_grad():
             prev_action_rep = [g.prev_act_rep for g in self.graph_info]
+            prev_action_rep = torch.tensor(prev_action_rep, device=self.device)
             graph_rep = [g.graph_state_rep for g in self.graph_info]
+            graph_rep = torch.tensor([grep[1] for grep in graph_rep], device=self.device)
             agent_graph_rep = [g.agent_graph_state_rep for g in self.graph_info]
+            agent_graph_rep = torch.tensor([grep[1] for grep in agent_graph_rep], device=self.device)
             next_value = self.acmodel(preprocessed_obs, self.memory * self.mask.unsqueeze(1), prev_action_rep,
                                       graph_rep, agent_graph_rep)['value']
 
@@ -261,7 +264,7 @@ class BaseAlgo(ABC):
             "episodes_done": self.log_done_counter,
         }
 
-        self.log_done_counter = 0
+        self.log_done_counter = torch.tensor(0, device=self.device)
         self.log_return = self.log_return[-self.num_procs:]
         self.log_reshaped_return = self.log_reshaped_return[-self.num_procs:]
         self.log_num_frames = self.log_num_frames[-self.num_procs:]

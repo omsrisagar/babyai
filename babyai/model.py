@@ -43,11 +43,13 @@ class FiLM(nn.Module):
     def forward(self, x, y, use_conv=True):
         if use_conv:
             x = F.relu(self.bn1(self.conv1(x)))
+            # x= F.relu(self.conv1(x))
             x = self.conv2(x)
             weight = self.weight(y).unsqueeze(2).unsqueeze(3)
             bias = self.bias(y).unsqueeze(2).unsqueeze(3)
             out = x * weight + bias
             return F.relu(self.bn2(out))
+            # return F.relu(out)
         else:
             # x = F.relu(x)
             x = F.relu(self.bn1_1d(x))
@@ -110,7 +112,7 @@ class StateNetwork(nn.Module):
         for g in graph_rep:
             # node_feats, adj = g # node_feats are not used, but I think state_ent_emb and adj can express that info
             adj = g
-            adj = torch.tensor(adj, dtype=torch.int, device=self.device)
+            # adj = torch.tensor(adj, dtype=torch.int, device=self.device)
             x = self.gat.forward(self.state_ent_emb.weight, adj).view(-1)
             out.append(x.unsqueeze_(0))
         out = torch.cat(out)
@@ -421,7 +423,8 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
 
         # previous action embedding
         if self.use_agent_graph or self.use_world_graph:
-            prev_action_emb = self.word_embedding(torch.tensor(prev_action, device=self.device))
+            # prev_action_emb = self.word_embedding(torch.tensor(prev_action, device=self.device))
+            prev_action_emb = self.word_embedding(prev_action)
             x = prev_action_emb
             if not self.no_film: # do this only if using film i.e., no_film=False
                 for controller in self.controllers:
