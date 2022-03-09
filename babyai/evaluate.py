@@ -84,13 +84,14 @@ class ManyEnvs(gym.Env):
 
 
 # Returns the performance of the agent on the environment for a particular number of episodes.
-def batch_evaluate(agent, env_name, seed, episodes, return_obss_actions=False, pixel=False, vocab_file=None,
-                   vocab_kge_file=None, debug_mode=None):
+def batch_evaluate(agent, env_name, seed, rank, gpus, gpu, episodes, return_obss_actions=False, pixel=False,
+                   vocab_file=None, vocab_kge_file=None, debug_mode=None):
     num_envs = min(256, episodes)
 
+    num_envs = num_envs // gpus
     envs = []
     for i in range(num_envs):
-        env = KGEnv(env_name, pixel, 100 * seed + i, vocab_file, vocab_kge_file, debug_mode)
+        env = KGEnv(env_name, pixel, 100 * seed * (1+rank) + i, vocab_file, vocab_kge_file, debug_mode, gpu)
         envs.append(env)
     env = ManyEnvs(envs)
 
@@ -103,7 +104,7 @@ def batch_evaluate(agent, env_name, seed, episodes, return_obss_actions=False, p
     }
 
     for i in range((episodes + num_envs - 1) // num_envs):
-        seeds = range(seed + i * num_envs, seed + (i + 1) * num_envs)
+        seeds = range(seed * (1+rank) + i * num_envs, seed * (1+rank) + (i + 1) * num_envs)
         env.seed(seeds)
 
         many_obs, many_ginfos = env.reset()

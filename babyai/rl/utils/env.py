@@ -1,7 +1,8 @@
 import collections
 import numpy as np
+import time, os
 from babyai.rl.utils.representations import StateAction
-import redis
+# import redis
 import random
 import gym
 from gym_minigrid.wrappers import RGBImgPartialObsWrapper
@@ -9,79 +10,6 @@ from gym_minigrid.wrappers import RGBImgPartialObsWrapper
 
 GraphInfo = collections.namedtuple('GraphInfo', 'prev_act_rep, graph_state, graph_state_rep, '
                                                 'agent_graph_state, agent_graph_state_rep')
-
-def gen_vocab_kge(vocab_kge_file):
-    colors = ['red', 'green', 'blue', 'purple', 'yellow', 'grey']
-    objs = ['ball', 'box', 'key']
-    door = ['door']
-    wall = ['wall']
-    rels = ['left', 'front', 'right', 'far_left', 'front_left', 'far_front', 'front_right', 'far_right']
-    # locs = ['top_left', 'top_center', 'top_right', 'center_left', 'center', 'center_right', 'bottom_left',
-    #         'bottom_center', 'bottom_right']
-    locs = ['right', 'behind', 'left', 'front']
-    door_status = ['locked_closed', 'unlocked_closed', 'unlocked_open']
-    vocab_kge = []
-    # only obj desc
-    for c in colors:
-        for o in objs + door:
-            obj_desc = c + '_' + o
-            vocab_kge.append(obj_desc)
-            if o is 'door':
-                for ds in door_status:
-                    full_obj_desc = ds + '_' + obj_desc
-                    vocab_kge.append(full_obj_desc)
-    # obj desc + agent relation
-    for o in objs + door + wall:
-        for r in rels:
-            if o is 'wall':
-                vocab_kge.append('wall' + '_to_the_' + r)
-            else:
-                for c in colors:
-                    obj_desc = c + '_' + o
-                    if o is 'door':
-                        for ds in door_status:
-                            full_obj_desc = ds + '_' + obj_desc
-                            vocab_kge.append(full_obj_desc + '_to_the_' + r)
-                    else:
-                        vocab_kge.append(obj_desc + '_to_the_' + r)
-    # roomm locations
-    # for loc in locs:
-    #     vocab_kge.append(loc + '_' + 'room')
-    for i in range(1, 10):
-        vocab_kge.append('Room' + str(i))
-
-    for loc in locs:
-        for i in range(1, 10):
-            vocab_kge.append('Room' + str(i) + '_to_the_' + loc)
-
-    for i in range(1, 10):
-        for c in colors:
-            vocab_kge.append(c + '_door_to_Room' + str(i))
-
-    vocab_kge.extend(['You'])
-    textfile = open(vocab_kge_file, "w")
-    for ent in vocab_kge:
-        textfile.write(ent + "\n")
-    textfile.close()
-
-def load_vocab_kge(vocab_kge_file):
-    ent = {}
-    id = 0
-    with open(vocab_kge_file, 'r') as f:
-        for line in f:
-            ent[line.strip()] = id
-            id += 1
-    return {'entity': ent}
-
-def load_vocab(vocab_file):
-    vocab = {}
-    id = 0
-    with open(vocab_file, 'r') as f:
-        for line in f:
-            vocab[line.strip()] = id
-            id += 1
-    vocab_rev = {v: i for i, v in vocab.items()}
-    return vocab, vocab_rev
 
 class KGEnv:
     '''
@@ -96,9 +24,9 @@ class KGEnv:
         self.use_pixel       = use_pixel
         self.seed            = seed
         self.episode_steps   = 0
-        gen_vocab_kge(vocab_kge_file)
-        self.vocab_kge = load_vocab_kge(vocab_kge_file)
-        self.vocab, self.vocab_rev = load_vocab(vocab_file)
+        self.gen_vocab_kge(vocab_kge_file)
+        self.vocab_kge = self.load_vocab_kge(vocab_kge_file)
+        self.vocab, self.vocab_rev = self.load_vocab(vocab_file)
         self.env             = None
         self.state_rep       = None
         self.room_idx = {}
@@ -108,6 +36,85 @@ class KGEnv:
         self.door_idx = {}
         self.create() # create the gym environment, so above self.env is instantiated
         self.debug_mode = debug_mode
+
+    def gen_vocab_kge(self, vocab_kge_file):
+        if os.path.exists(vocab_kge_file):
+            return
+        colors = ['red', 'green', 'blue', 'purple', 'yellow', 'grey']
+        objs = ['ball', 'box', 'key']
+        door = ['door']
+        wall = ['wall']
+        rels = ['left', 'front', 'right', 'far_left', 'front_left', 'far_front', 'front_right', 'far_right']
+        # locs = ['top_left', 'top_center', 'top_right', 'center_left', 'center', 'center_right', 'bottom_left',
+        #         'bottom_center', 'bottom_right']
+        locs = ['right', 'behind', 'left', 'front']
+        door_status = ['locked_closed', 'unlocked_closed', 'unlocked_open']
+        vocab_kge = []
+        # only obj desc
+        for c in colors:
+            for o in objs + door:
+                obj_desc = c + '_' + o
+                vocab_kge.append(obj_desc)
+                if o is 'door':
+                    for ds in door_status:
+                        full_obj_desc = ds + '_' + obj_desc
+                        vocab_kge.append(full_obj_desc)
+        # obj desc + agent relation
+        for o in objs + door + wall:
+            for r in rels:
+                if o is 'wall':
+                    vocab_kge.append('wall' + '_to_the_' + r)
+                else:
+                    for c in colors:
+                        obj_desc = c + '_' + o
+                        if o is 'door':
+                            for ds in door_status:
+                                full_obj_desc = ds + '_' + obj_desc
+                                vocab_kge.append(full_obj_desc + '_to_the_' + r)
+                        else:
+                            vocab_kge.append(obj_desc + '_to_the_' + r)
+        # roomm locations
+        # for loc in locs:
+        #     vocab_kge.append(loc + '_' + 'room')
+        for i in range(1, 10):
+            vocab_kge.append('Room' + str(i))
+
+        for loc in locs:
+            for i in range(1, 10):
+                vocab_kge.append('Room' + str(i) + '_to_the_' + loc)
+
+        for i in range(1, 10):
+            for c in colors:
+                vocab_kge.append(c + '_door_to_Room' + str(i))
+
+        vocab_kge.extend(['You'])
+        with open(vocab_kge_file, "w") as textfile:
+            for ent in vocab_kge:
+                textfile.write(ent + "\n")
+        print(f'Done generating vocab_kge file')
+
+    def load_vocab_kge(self, vocab_kge_file):
+        ent = {}
+        id = 0
+        while not os.path.exists(vocab_kge_file):
+            time.sleep(1)
+        with open(vocab_kge_file, 'rb') as f:
+            for line in f:
+                ent[line.decode().strip()] = id
+                id += 1
+        if id != 438:
+            print('Not all are read')
+        return {'entity': ent}
+
+    def load_vocab(self, vocab_file):
+        vocab = {}
+        id = 0
+        with open(vocab_file, 'r') as f:
+            for line in f:
+                vocab[line.strip()] = id
+                id += 1
+        vocab_rev = {v: i for i, v in vocab.items()}
+        return vocab, vocab_rev
 
     def room_to_idx(self, id):
         if not id in self.room_idx.keys():

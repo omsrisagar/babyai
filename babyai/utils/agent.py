@@ -33,35 +33,41 @@ class Agent(ABC):
 class ModelAgent(Agent):
     """A model-based agent. This agent behaves using a model."""
 
-    def __init__(self, model_or_name, obss_preprocessor, argmax):
+    def __init__(self, model_or_name, obss_preprocessor, device, argmax):
         if obss_preprocessor is None:
             assert isinstance(model_or_name, str)
             obss_preprocessor = utils.ObssPreprocessor(model_or_name)
         self.obss_preprocessor = obss_preprocessor
         if isinstance(model_or_name, str):
-            self.model = utils.load_model(model_or_name)
-            if torch.cuda.is_available():
-                self.model.cuda()
+            self.model = utils.load_model(model_or_name, device)
+            # if torch.cuda.is_available():
+            #     self.model.cuda(device=device)
         else:
             self.model = model_or_name
-        self.device = next(self.model.parameters()).device
+        # self.device = next(self.model.parameters()).device
+        self.device = device
         self.argmax = argmax
         self.memory = None
 
     def act_batch(self, many_obs, many_ginfos):
         if self.memory is None:
             self.memory = torch.zeros(
-                len(many_obs), self.model.memory_size, device=self.device)
+                len(many_obs), self.model.module.memory_size, device=self.device)
         elif self.memory.shape[0] != len(many_obs):
             raise ValueError("stick to one batch size for the lifetime of an agent")
-        if torch.cuda.is_available():
-            self.model = torch.nn.DataParallel(self.model)
+        # if torch.cuda.is_available():
+        #     self.model = torch.nn.DataParallel(self.model)
         preprocessed_obs = self.obss_preprocessor(many_obs, device=self.device)
+        # if self.memory.get_device() == 1:
+        #     print('Device 1')
 
         with torch.no_grad():
             prev_action_rep = [g.prev_act_rep for g in many_ginfos]
+            prev_action_rep = torch.tensor(prev_action_rep, device=self.device)
             graph_rep = [g.graph_state_rep for g in many_ginfos]
+            graph_rep = torch.tensor([grep[1] for grep in graph_rep], device=self.device)
             agent_graph_rep = [g.agent_graph_state_rep for g in many_ginfos]
+            agent_graph_rep = torch.tensor([grep[1] for grep in agent_graph_rep], device=self.device)
             model_results = self.model(preprocessed_obs, self.memory, prev_action_rep, graph_rep, agent_graph_rep)
             dist = model_results['dist']
             value = model_results['value']

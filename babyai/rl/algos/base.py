@@ -103,10 +103,10 @@ class BaseAlgo(ABC):
         self.log_episode_reshaped_return = torch.zeros(self.num_procs, device=self.device)
         self.log_episode_num_frames = torch.zeros(self.num_procs, device=self.device)
 
-        self.log_done_counter = torch.tensor(0, device=self.device)
-        self.log_return = torch.tensor([0] * self.num_procs, device=self.device)
-        self.log_reshaped_return = torch.tensor([0] * self.num_procs, device=self.device)
-        self.log_num_frames = torch.tensor([0] * self.num_procs, device=self.device)
+        self.log_done_counter = 0
+        self.log_return = [0] * self.num_procs
+        self.log_reshaped_return = [0] * self.num_procs
+        self.log_num_frames = [0] * self.num_procs
 
     def collect_experiences(self): #note that we are collecting experiences with torch.no_grad!
         """Collects rollouts and computes advantages.
@@ -188,13 +188,13 @@ class BaseAlgo(ABC):
             self.log_episode_num_frames += torch.ones(self.num_procs, device=self.device)
 
             for i, done_ in enumerate(done):
-                if done_: # the following get updated only when done, else they are all zero per proc
-                    self.log_done_counter += 1
-                    self.log_return.append(self.log_episode_return[i].item())
-                    self.log_reshaped_return.append(self.log_episode_reshaped_return[i].item())
-                    self.log_num_frames.append(self.log_episode_num_frames[i].item())
+                if done_: # the foll'ing get updated/logged only when done in curr step, else they are all zero per proc
+                    self.log_done_counter += 1 # i below is the frame num/time step in episode
+                    self.log_return.append(self.log_episode_return[i].item()) # return till current timestep
+                    self.log_reshaped_return.append(self.log_episode_reshaped_return[i].item()) # modified return ^
+                    self.log_num_frames.append(self.log_episode_num_frames[i].item()) # number of timesteps till currst
 
-            self.log_episode_return *= self.mask
+            self.log_episode_return *= self.mask # when done happens at time t, then it is reset to 0
             self.log_episode_reshaped_return *= self.mask
             self.log_episode_num_frames *= self.mask
 
@@ -257,15 +257,17 @@ class BaseAlgo(ABC):
         keep = max(self.log_done_counter, self.num_procs)
 
         log = {
-            "return_per_episode": self.log_return[-keep:],
-            "reshaped_return_per_episode": self.log_reshaped_return[-keep:],
-            "num_frames_per_episode": self.log_num_frames[-keep:],
+            "return_per_episode": torch.tensor(self.log_return[-keep:], device=self.device), # list of rewards when done
+            # happens within an episode; like avg return within an episode (when the list is avg'd)
+            "reshaped_return_per_episode": torch.tensor(self.log_reshaped_return[-keep:], device=self.device),
+            "num_frames_per_episode": torch.tensor(self.log_num_frames[-keep:], device=self.device), # avg num of
+            # frames taken for 'done'
             "num_frames": self.num_frames,
-            "episodes_done": self.log_done_counter,
+            "episodes_done": torch.tensor(self.log_done_counter, device=self.device)
         }
 
-        self.log_done_counter = torch.tensor(0, device=self.device)
-        self.log_return = self.log_return[-self.num_procs:]
+        self.log_done_counter = 0
+        self.log_return = self.log_return[-self.num_procs:] # these last num_proc items are only placeholder;
         self.log_reshaped_return = self.log_reshaped_return[-self.num_procs:]
         self.log_num_frames = self.log_num_frames[-self.num_procs:]
 

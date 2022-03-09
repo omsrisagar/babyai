@@ -17,7 +17,11 @@ class Vocabulary:
         self.path = get_vocab_path(model_name)
         self.max_size = 100
         if os.path.exists(self.path):
-            self.vocab = json.load(open(self.path))
+            try:
+                with open(self.path, 'r') as f:
+                    self.vocab = json.load(f)
+            except Exception as e:
+                print(f'Exception {e} occurred')
         else:
             self.vocab = {}
 
@@ -32,7 +36,8 @@ class Vocabulary:
         if path is None:
             path = self.path
         utils.create_folders_if_necessary(path)
-        json.dump(self.vocab, open(path, "w"))
+        with open(path, 'w') as f:
+            json.dump(self.vocab, f)
 
     def copy_vocab_from(self, other):
         '''

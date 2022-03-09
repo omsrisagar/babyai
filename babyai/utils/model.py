@@ -12,13 +12,14 @@ def get_model_path(model_name):
     return os.path.join(get_model_dir(model_name), "model.pt")
 
 
-def load_model(model_name, raise_not_found=True):
+def load_model(model_name, device, raise_not_found=True):
     path = get_model_path(model_name)
     try:
-        if torch.cuda.is_available():
-            model = torch.load(path)
-        else:
-            model = torch.load(path, map_location=torch.device("cpu"))
+        # if torch.cuda.is_available():
+        #     model = torch.load(path)
+        # else:
+        #     model = torch.load(path, map_location=torch.device("cpu"))
+        model = torch.load(path, map_location=device)
         model.eval()
         return model
     except FileNotFoundError:
