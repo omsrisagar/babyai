@@ -60,8 +60,8 @@ def main():
     parser.add_argument('--no-obs-image', dest='use_obs_image', action='store_false')
     parser.add_argument('--no-film', dest='no_film', action='store_true', help='applies only to kg representations')
     parser.add_argument('--debug', dest='debug_mode', action='store_true')
-    parser.add_argument('-n', '--nodes', default=1, type=int, metavar='N',
-                        help='number of physical computers/nodes/EC2 instances')
+    # parser.add_argument('-n', '--nodes', default=1, type=int, metavar='N',
+    #                     help='number of physical computers/nodes/EC2 instances')
     parser.add_argument('-g', '--gpus', default=1, type=int,
                         help='number of gpus you plan to use in this node')
     parser.add_argument('-sgr', '--sgr', default=0, type=int,
