@@ -3,14 +3,17 @@
     <module name="babyai" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
-    <option name="SDK_HOME" value="/export/home/tulsi1/srikanth/miniconda3/envs/vln/bin/python" />
+    <envs>
+      <env name="PYTHONUNBUFFERED" value="1" />
+    </envs>
+    <option name="SDK_HOME" value="" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/scripts" />
-    <option name="IS_MODULE_SDK" value="false" />
+    <option name="IS_MODULE_SDK" value="true" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/scripts/train_rl.py" />
-    <option name="PARAMETERS" value="--env BabyAI-GoTo-v0 --arch pixels_endpool_res --no-world-graph --no-agent-graph --model goto_custom --procs 12 --val-episodes 12" />
+    <option name="PARAMETERS" value="--env BabyAI-GoTo-v0 --arch pixels_endpool_res --model goto_custom --procs 6 --val-episodes 6" />
     <option name="SHOW_COMMAND_LINE" value="true" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />
