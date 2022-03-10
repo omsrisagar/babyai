@@ -17,14 +17,15 @@ class KGEnv:
     KG environment performs additional graph-based processing.
 
     '''
-    def __init__(self, gym_env, use_pixel, seed, vocab_file, vocab_kge_file, debug_mode):
+    def __init__(self, gym_env, use_pixel, seed, vocab_file, vocab_kge_file, debug_mode, first_proc):
         random.seed(seed)
         np.random.seed(seed)
         self.gym_env         = gym_env
         self.use_pixel       = use_pixel
         self.seed            = seed
         self.episode_steps   = 0
-        self.gen_vocab_kge(vocab_kge_file)
+        if first_proc:
+            self.gen_vocab_kge(vocab_kge_file)
         self.vocab_kge = self.load_vocab_kge(vocab_kge_file)
         self.vocab, self.vocab_rev = self.load_vocab(vocab_file)
         self.env             = None
@@ -98,9 +99,9 @@ class KGEnv:
         id = 0
         while not os.path.exists(vocab_kge_file):
             time.sleep(1)
-        with open(vocab_kge_file, 'rb') as f:
+        with open(vocab_kge_file, 'r') as f:
             for line in f:
-                ent[line.decode().strip()] = id
+                ent[line.strip()] = id
                 id += 1
         if id != 438:
             print('Not all are read')

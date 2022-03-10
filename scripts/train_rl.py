@@ -29,6 +29,66 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+def main():
+    # Parse arguments
+    parser = ArgumentParser()
+    parser.add_argument("--algo", default='ppo',
+                        help="algorithm to use (default: ppo)")
+    parser.add_argument("--discount", type=float, default=0.99,
+                        help="discount factor (default: 0.99)")
+    parser.add_argument("--reward-scale", type=float, default=20.,
+                        help="Reward scale multiplier")
+    parser.add_argument("--gae-lambda", type=float, default=0.99,
+                        help="lambda coefficient in GAE formula (default: 0.99, 1 means no gae)")
+    parser.add_argument("--value-loss-coef", type=float, default=0.5,
+                        help="value loss term coefficient (default: 0.5)")
+    parser.add_argument("--max-grad-norm", type=float, default=0.5,
+                        help="maximum norm of gradient (default: 0.5)")
+    parser.add_argument("--clip-eps", type=float, default=0.2,
+                        help="clipping epsilon for PPO (default: 0.2)")
+    parser.add_argument("--ppo-epochs", type=int, default=4,
+                        help="number of epochs for PPO (default: 4)")
+    parser.add_argument("--save-interval", type=int, default=50,
+                        help="number of updates between two saves (default: 50, 0 means no saving)")
+    parser.add_argument('--vocab_file', default='../babyai/data/vocab.txt')
+    parser.add_argument('--vocab_kge_file', default='../babyai/data/vocab_kge.txt')
+    parser.add_argument('--gat_emb_size', default=128, type=int)
+    parser.add_argument('--agent_gat_emb_size', default=128, type=int)
+    parser.add_argument('--dropout_ratio', default=0.2, type=float)
+    parser.add_argument('--no-world-graph', dest='use_world_graph', action='store_false')
+    parser.add_argument('--no-agent-graph', dest='use_agent_graph', action='store_false')
+    parser.add_argument('--no-obs-image', dest='use_obs_image', action='store_false')
+    parser.add_argument('--no-film', dest='no_film', action='store_true', help='applies only to kg representations')
+    parser.add_argument('--debug', dest='debug_mode', action='store_true')
+    parser.add_argument('-n', '--nodes', default=1, type=int, metavar='N',
+                        help='number of physical computers/nodes/EC2 instances')
+    parser.add_argument('-g', '--gpus', default=1, type=int,
+                        help='number of gpus you plan to use in this node')
+    parser.add_argument('-sgr', '--sgr', default=0, type=int,
+                        help='starting gpu rank: starting global rank of gpus in this node (sum gpus in prev nodes)')
+    parser.add_argument('-spr', '--spr', default=0, type=int,
+                        help='starting proc rank: starting global rank of procs in this node (sum procs in prev nodes)')
+    parser.add_argument('-ws', '--ws', default=1, type=int,
+                        help='world_size: total number of GPUs/processes you are running across all nodes')
+    parser.add_argument('--gpu_ids', default='0', type=str, help='id(s) from nvidia-smi for CUDA_VISIBLE_DEVICES')
+    # args.world_size = args.gpus * args.nodes
+    # os.environ['MASTER_ADDR'] = '130.107.72.224' #cuda0003
+    os.environ['MASTER_ADDR'] = '130.107.72.207'  # tulsi
+    os.environ['MASTER_PORT'] = '8888'
+    os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'DETAIL'
+    parser.set_defaults(use_world_graph=True)
+    parser.set_defaults(use_agent_graph=True)
+    parser.set_defaults(use_obs_image=True)
+    parser.set_defaults(no_film=False)
+    parser.set_defaults(debug_mode=False)
+    args = parser.parse_args()
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
+
+    utils.seed(args.seed)
+
+    mp.spawn(train, nprocs=args.gpus, args=(args,))
+    # train(0, args)
 
 def train(gpu, args):
     rank = args.sgr + gpu  # global rank of this gpu/process.Dont get confused between gpu process and episode process
@@ -45,7 +105,7 @@ def train(gpu, args):
     # this node
     for i in range(proc_per_gpu):
         env = KGEnv(args.env, use_pixel, 100 * args.seed + i + args.spr + gpu * proc_per_gpu, args.vocab_file,
-                    args.vocab_kge_file, args.debug_mode)
+                    args.vocab_kge_file, args.debug_mode, i==0)
         if not env.vocab_kge['entity']:
             print('Empty vocab kge!')
         envs.append(env)
@@ -167,22 +227,22 @@ def train(gpu, args):
 
         # Log code state, command, availability of CUDA and model
 
-        # babyai_code = list(babyai.__path__)[0]
-        # try:
-        #     last_commit = subprocess.check_output(
-        #         'cd {}; git log -n1'.format(babyai_code), shell=True).decode('utf-8')
-        #     logger.info('LAST COMMIT INFO:')
-        #     logger.info(last_commit)
-        # except subprocess.CalledProcessError:
-        #     logger.info('Could not figure out the last commit')
-        # try:
-        #     diff = subprocess.check_output(
-        #         'cd {}; git diff'.format(babyai_code), shell=True).decode('utf-8')
-        #     if diff:
-        #         logger.info('GIT DIFF:')
-        #         logger.info(diff)
-        # except subprocess.CalledProcessError:
-        #     logger.info('Could not figure out the last commit')
+        babyai_code = list(babyai.__path__)[0]
+        try:
+            last_commit = subprocess.check_output(
+                'cd {}; git log -n1'.format(babyai_code), shell=True).decode('utf-8')
+            logger.info('LAST COMMIT INFO:')
+            logger.info(last_commit)
+        except subprocess.CalledProcessError:
+            logger.info('Could not figure out the last commit')
+        try:
+            diff = subprocess.check_output(
+                'cd {}; git diff'.format(babyai_code), shell=True).decode('utf-8')
+            if diff:
+                logger.info('GIT DIFF:')
+                logger.info(diff)
+        except subprocess.CalledProcessError:
+            logger.info('Could not figure out the last commit')
         logger.info('COMMAND LINE ARGS:')
         logger.info(args)
         logger.info("CUDA available: {}".format(torch.cuda.is_available()))
@@ -294,59 +354,4 @@ def train(gpu, args):
                     logger.info("Return {: .2f}; not the best model; not saved".format(mean_return))
 
 if __name__ == '__main__':
-    # Parse arguments
-    parser = ArgumentParser()
-    parser.add_argument("--algo", default='ppo',
-                        help="algorithm to use (default: ppo)")
-    parser.add_argument("--discount", type=float, default=0.99,
-                        help="discount factor (default: 0.99)")
-    parser.add_argument("--reward-scale", type=float, default=20.,
-                        help="Reward scale multiplier")
-    parser.add_argument("--gae-lambda", type=float, default=0.99,
-                        help="lambda coefficient in GAE formula (default: 0.99, 1 means no gae)")
-    parser.add_argument("--value-loss-coef", type=float, default=0.5,
-                        help="value loss term coefficient (default: 0.5)")
-    parser.add_argument("--max-grad-norm", type=float, default=0.5,
-                        help="maximum norm of gradient (default: 0.5)")
-    parser.add_argument("--clip-eps", type=float, default=0.2,
-                        help="clipping epsilon for PPO (default: 0.2)")
-    parser.add_argument("--ppo-epochs", type=int, default=4,
-                        help="number of epochs for PPO (default: 4)")
-    parser.add_argument("--save-interval", type=int, default=50,
-                        help="number of updates between two saves (default: 50, 0 means no saving)")
-    parser.add_argument('--vocab_file', default='../babyai/data/vocab.txt')
-    parser.add_argument('--vocab_kge_file', default='../babyai/data/vocab_kge.txt')
-    parser.add_argument('--gat_emb_size', default=128, type=int)
-    parser.add_argument('--agent_gat_emb_size', default=128, type=int)
-    parser.add_argument('--dropout_ratio', default=0.2, type=float)
-    parser.add_argument('--no-world-graph', dest='use_world_graph', action='store_false')
-    parser.add_argument('--no-agent-graph', dest='use_agent_graph', action='store_false')
-    parser.add_argument('--no-obs-image', dest='use_obs_image', action='store_false')
-    parser.add_argument('--no-film', dest='no_film', action='store_true', help='applies only to kg representations')
-    parser.add_argument('--debug', dest='debug_mode', action='store_true')
-    parser.add_argument('-n', '--nodes', default=1, type=int, metavar='N',
-                        help='number of physical computers/nodes/EC2 instances')
-    parser.add_argument('-g', '--gpus', default=1, type=int,
-                        help='number of gpus you plan to use in this node')
-    parser.add_argument('-sgr', '--sgr', default=0, type=int,
-                        help='starting gpu rank: starting global rank of gpus in this node (sum gpus in prev nodes)')
-    parser.add_argument('-spr', '--spr', default=0, type=int,
-                        help='starting proc rank: starting global rank of procs in this node (sum procs in prev nodes)')
-    parser.add_argument('-ws', '--ws', default=1, type=int,
-                        help='world_size: total number of GPUs/processes you are running across all nodes')
-    # args.world_size = args.gpus * args.nodes
-    # os.environ['MASTER_ADDR'] = '130.107.72.224' #cuda0003
-    os.environ['MASTER_ADDR'] = '130.107.72.207'  # tulsi
-    os.environ['MASTER_PORT'] = '8888'
-    os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'DETAIL'
-    parser.set_defaults(use_world_graph=True)
-    parser.set_defaults(use_agent_graph=True)
-    parser.set_defaults(use_obs_image=True)
-    parser.set_defaults(no_film=False)
-    parser.set_defaults(debug_mode=False)
-    args = parser.parse_args()
-
-    utils.seed(args.seed)
-
-    mp.spawn(train, nprocs=args.gpus, args=(args,))
-    # train(0, args)
+    main()
