@@ -37,8 +37,7 @@ class PPOAlgo(BaseAlgo):
             # proc_group = torch.distributed.new_group([rank])
             # self.acmodel = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.acmodel, proc_group)
             self.acmodel = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.acmodel)
-            self.acmodel = torch.nn.parallel.DistributedDataParallel(self.acmodel, device_ids=[device_id],
-                                                                     broadcast_buffers=False)
+            self.acmodel = torch.nn.parallel.DistributedDataParallel(self.acmodel, broadcast_buffers=False)
             # pass
 
     def update_parameters(self):
