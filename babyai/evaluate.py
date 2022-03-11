@@ -91,7 +91,7 @@ def batch_evaluate(agent, env_name, seed, rank, gpus, gpu, episodes, return_obss
     num_envs = num_envs // gpus
     envs = []
     for i in range(num_envs):
-        env = KGEnv(env_name, pixel, 100 * seed * (1+rank) + i, vocab_file, vocab_kge_file, debug_mode, gpu)
+        env = KGEnv(env_name, pixel, 100 * seed * (1+rank) + i, vocab_file, vocab_kge_file, debug_mode, False)
         envs.append(env)
     env = ManyEnvs(envs)
 
