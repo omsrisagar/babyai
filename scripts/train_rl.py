@@ -337,8 +337,12 @@ def train(gpu, args):
             agent.model.train()
             mean_return = np.mean(logs["return_per_episode"])
             success_rate = np.mean([1 if r > 0 else 0 for r in logs['return_per_episode']])
+            mean_return = torch.tensor(mean_return, device=device)
             success_rate = torch.tensor(success_rate, device=device)
             if rank == args.sgr:
+                mean_mean_return = [torch.zeros_like(mean_return) for _ in range(args.ws)]
+                dist.all_gather(mean_mean_return, mean_return)
+                mean_return = torch.stack(mean_mean_return).mean().cpu().numpy()
                 mean_success_rate = [torch.zeros_like(success_rate) for _ in range(args.ws)]
                 dist.all_gather(mean_success_rate, success_rate)
                 success_rate = torch.stack(mean_success_rate).mean().cpu().numpy()
