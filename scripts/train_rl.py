@@ -73,7 +73,8 @@ def main():
     parser.add_argument('--gpu_ids', default='0', type=str, help='id(s) from nvidia-smi for CUDA_VISIBLE_DEVICES')
     # args.world_size = args.gpus * args.nodes
     # os.environ['MASTER_ADDR'] = '130.107.72.224' #cuda0003
-    os.environ['MASTER_ADDR'] = '130.107.72.207'  # tulsi
+    # os.environ['MASTER_ADDR'] = '130.107.72.207'  # tulsi
+    os.environ['MASTER_ADDR'] = '130.107.72.220'  # cuda0001
     os.environ['MASTER_PORT'] = '8888'
     os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'DETAIL'
     parser.set_defaults(use_world_graph=True)
@@ -262,10 +263,10 @@ def train(gpu, args):
         all_logs = {}
         for k, v in logs.items():
             if 'per_episode' in k:
-                all_logs[k] = all_gather(logs[k], args.ws, device)
+                all_logs[k] = all_gather_multigpu(logs[k], args.ws, device)
             else:
                 all_logs[k] = [torch.zeros_like(logs[k]) for _ in range(args.ws)]
-                dist.all_gather(all_logs[k], logs[k])
+                dist.all_gather_multigpu(all_logs[k], logs[k])
         update_end_time = time.time()
 
         # reduce the data from all ranks
@@ -341,10 +342,10 @@ def train(gpu, args):
             success_rate = torch.tensor(success_rate, device=device)
             if rank == args.sgr:
                 mean_mean_return = [torch.zeros_like(mean_return) for _ in range(args.ws)]
-                dist.all_gather(mean_mean_return, mean_return)
+                dist.all_gather_multigpu(mean_mean_return, mean_return)
                 mean_return = torch.stack(mean_mean_return).mean().cpu().numpy()
                 mean_success_rate = [torch.zeros_like(success_rate) for _ in range(args.ws)]
-                dist.all_gather(mean_success_rate, success_rate)
+                dist.all_gather_multigpu(mean_success_rate, success_rate)
                 success_rate = torch.stack(mean_success_rate).mean().cpu().numpy()
                 save_model = False
                 if success_rate > best_success_rate:
@@ -360,7 +361,7 @@ def train(gpu, args):
                 else:
                     logger.info("Return {: .2f}; not the best model; not saved".format(mean_return))
 
-def all_gather(q, ws, device):
+def all_gather_multigpu(q, ws, device):
     """
     Gathers tensor arrays of different lengths across multiple gpus
 
@@ -377,7 +378,7 @@ def all_gather(q, ws, device):
     """
     local_size = torch.tensor(q.size(), device=device)
     all_sizes = [torch.zeros_like(local_size) for _ in range(ws)]
-    dist.all_gather(all_sizes, local_size)
+    dist.all_gather_multigpu(all_sizes, local_size)
     max_size = max(all_sizes)
 
     size_diff = max_size.item() - local_size.item()
@@ -386,7 +387,7 @@ def all_gather(q, ws, device):
         q = torch.cat((q, padding))
 
     all_qs_padded = [torch.zeros_like(q) for _ in range(ws)]
-    dist.all_gather(all_qs_padded, q)
+    dist.all_gather_multigpu(all_qs_padded, q)
     all_qs = []
     for q, size in zip(all_qs_padded, all_sizes):
         all_qs.append(q[:size])
