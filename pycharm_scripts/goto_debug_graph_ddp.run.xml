@@ -10,7 +10,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/scripts/train_rl.py" />
-    <option name="PARAMETERS" value="--env BabyAI-GoTo-v0 --model debug_graph --procs 12 --val-episodes 12 --gpus 1 --sgr 0 --spr 0 --ws 2 --gpu_ids 0" />
+    <option name="PARAMETERS" value="--env BabyAI-GoTo-v0 --model debug_graph --procs 2 --val-episodes 2 --gpus 2 --sgr 0 --spr 0 --ws 3 --gpu_ids 0,1" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />
