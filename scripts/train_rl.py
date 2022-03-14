@@ -71,12 +71,7 @@ def main():
     parser.add_argument('-ws', '--ws', default=1, type=int,
                         help='world_size: total number of GPUs/processes you are running across all nodes')
     parser.add_argument('--gpu_ids', default='0', type=str, help='id(s) from nvidia-smi for CUDA_VISIBLE_DEVICES')
-    # args.world_size = args.gpus * args.nodes
-    # os.environ['MASTER_ADDR'] = '130.107.72.224' #cuda0003
-    # os.environ['MASTER_ADDR'] = '130.107.72.207'  # tulsi
-    os.environ['MASTER_ADDR'] = '130.107.72.220'  # cuda0001
-    os.environ['MASTER_PORT'] = '8888'
-    os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'DETAIL'
+    parser.add_argument('--master_addr', default='localhost', type=str, help='Address/name of Rank 0')
     parser.set_defaults(use_world_graph=True)
     parser.set_defaults(use_agent_graph=True)
     parser.set_defaults(use_obs_image=True)
@@ -84,6 +79,13 @@ def main():
     parser.set_defaults(debug_mode=False)
     args = parser.parse_args()
 
+    # args.world_size = args.gpus * args.nodes
+    # os.environ['MASTER_ADDR'] = '130.107.72.224' #cuda0003
+    # os.environ['MASTER_ADDR'] = '130.107.72.207'  # tulsi
+    os.environ['MASTER_ADDR'] = args.master_addr
+    # os.environ['MASTER_ADDR'] = '130.107.72.220'  # cuda0001
+    os.environ['MASTER_PORT'] = '8888'
+    os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'DETAIL'
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
 
     utils.seed(args.seed)

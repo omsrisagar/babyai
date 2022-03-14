@@ -104,8 +104,8 @@ class BaseAlgo(ABC):
         self.log_episode_num_frames = torch.zeros(self.num_procs, device=self.device)
 
         self.log_done_counter = 0
-        self.log_return = [0] * self.num_procs
-        self.log_reshaped_return = [0] * self.num_procs
+        self.log_return = [0.0] * self.num_procs
+        self.log_reshaped_return = [0.0] * self.num_procs
         self.log_num_frames = [0] * self.num_procs
 
     def collect_experiences(self): #note that we are collecting experiences with torch.no_grad!
