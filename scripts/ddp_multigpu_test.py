@@ -13,9 +13,9 @@ def test(indx):
     # for dev_idx in range(1):
     # tensor_list.append(torch.FloatTensor([indx]).cuda(indx))
     # tensor_list.append(torch.tensor(indx, device=torch.device(indx)))
-    mytensor = torch.tensor([indx, indx+1], device=torch.device(indx)) # device index = 0 on cuda0003
+    mytensor = torch.tensor([indx*1.0, indx+1.0], device=torch.device(indx)) # device index = 0 on cuda0003
 
-    output_list = [torch.tensor([0, 0], device=torch.device(indx)) for _ in range(3)]
+    output_list = [torch.tensor([0.0, 0.0], device=torch.device(indx)) for _ in range(3)]
 
     # dist.all_gather_multigpu(output_list, tensor_list)
     dist.all_gather(output_list, mytensor)
