@@ -72,7 +72,7 @@ def train(gpu, args):
     )
     device = torch.device(gpu)
     print(f'hello! {gpu}')
-    if gpu == 0:
+    if gpu == 1:
         q = torch.tensor([1.5, 2.3], device=device)
     else:
         q = torch.tensor([5.3], device=device)

@@ -264,11 +264,16 @@ def train(gpu, args):
         logs = algo.update_parameters()
         all_logs = {}
         for k, v in logs.items():
+            print(f'{k}: GPU {gpu}')
+            print(logs[k])
             if 'per_episode' in k:
                 all_logs[k] = all_gather(logs[k], args.ws, device)
             else:
                 all_logs[k] = [torch.zeros_like(logs[k]) for _ in range(args.ws)]
                 dist.all_gather(all_logs[k], logs[k])
+                print('Done rest')
+            if gpu == 0:
+                print(all_logs[k])
         update_end_time = time.time()
 
         # reduce the data from all ranks
@@ -281,6 +286,7 @@ def train(gpu, args):
             else:
                 all_logs[k] = torch.stack(all_logs[k]).mean().cpu().numpy()
 
+        print('Updated all_logs')
         logs = all_logs
         status['num_frames'] += logs["num_frames"]
         status['num_episodes'] += logs['episodes_done']
@@ -290,6 +296,7 @@ def train(gpu, args):
 
         if rank == args.sgr:
             if status['i'] % args.log_interval == 0:
+                print('entered print stage')
                 total_ellapsed_time = int(time.time() - total_start_time)
                 fps = logs["num_frames"] / (update_end_time - update_start_time)
                 duration = datetime.timedelta(seconds=total_ellapsed_time)
