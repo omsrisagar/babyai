@@ -349,20 +349,20 @@ def train(gpu, args):
             success_rate = np.mean([1 if r > 0 else 0 for r in logs['return_per_episode']])
             mean_return = torch.tensor(mean_return, device=device)
             success_rate = torch.tensor(success_rate, device=device)
+            mean_mean_return = [torch.zeros_like(mean_return) for _ in range(args.ws)]
+            dist.all_gather(mean_mean_return, mean_return)
+            mean_return = torch.stack(mean_mean_return).mean().cpu().numpy()
+            mean_success_rate = [torch.zeros_like(success_rate) for _ in range(args.ws)]
+            dist.all_gather(mean_success_rate, success_rate)
+            success_rate = torch.stack(mean_success_rate).mean().cpu().numpy()
+            save_model = False
+            if success_rate > best_success_rate:
+                best_success_rate = success_rate
+                save_model = True
+            elif (success_rate == best_success_rate) and (mean_return > best_mean_return):
+                best_mean_return = mean_return
+                save_model = True
             if rank == args.sgr:
-                mean_mean_return = [torch.zeros_like(mean_return) for _ in range(args.ws)]
-                dist.all_gather(mean_mean_return, mean_return)
-                mean_return = torch.stack(mean_mean_return).mean().cpu().numpy()
-                mean_success_rate = [torch.zeros_like(success_rate) for _ in range(args.ws)]
-                dist.all_gather(mean_success_rate, success_rate)
-                success_rate = torch.stack(mean_success_rate).mean().cpu().numpy()
-                save_model = False
-                if success_rate > best_success_rate:
-                    best_success_rate = success_rate
-                    save_model = True
-                elif (success_rate == best_success_rate) and (mean_return > best_mean_return):
-                    best_mean_return = mean_return
-                    save_model = True
                 if save_model:
                     utils.save_model(algo.acmodel, args.model + '_best')
                     obss_preprocessor.vocab.save(utils.get_vocab_path(args.model + '_best'))
