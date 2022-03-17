@@ -6,4 +6,4 @@ docker run \
   --volume="$PWD/scripts/models:/app/scripts/models" \
   --volume="$PWD/scripts/logs:/app/scripts/logs" \
   babyai_kg \
-  python train_rl.py --env BabyAI-GoTo-v0 --model debug_graph --procs 2 --val-episodes 2 --gpus 2 --sgr 0 --spr 0 --ws 2 --gpu_ids 0,1 --master_addr tulsi --log-interval 2 --save-interval 2
+  python train_rl.py --env BabyAI-GoTo-v0 --model goto_graph_only_ddp --no-obs-image --procs 60 --val-episodes 60 --gpus 2 --sgr 0 --spr 0 --ws 3 --gpu_ids 0,1 --master_addr localhost
