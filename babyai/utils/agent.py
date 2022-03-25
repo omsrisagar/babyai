@@ -51,8 +51,12 @@ class ModelAgent(Agent):
 
     def act_batch(self, many_obs, many_ginfos):
         if self.memory is None:
+            if 'ACModel' in str(type(self.model)):
+                mem_size = self.model.memory_size
+            else:
+                mem_size = self.model.module.memory_size
             self.memory = torch.zeros(
-                len(many_obs), self.model.module.memory_size, device=self.device)
+                len(many_obs), mem_size, device=self.device)
         elif self.memory.shape[0] != len(many_obs):
             raise ValueError("stick to one batch size for the lifetime of an agent")
         # if torch.cuda.is_available():

@@ -83,8 +83,12 @@ class BaseAlgo(ABC):
         self.obss = [None]*(shape[0])
         self.graph_infos = [None]*(shape[0])
 
-        self.memory = torch.zeros(shape[1], self.acmodel.module.memory_size, device=self.device)
-        self.memories = torch.zeros(*shape, self.acmodel.module.memory_size, device=self.device)
+        if 'ACModel' in str(type(self.acmodel)):
+            mem_size = self.acmodel.memory_size
+        else:
+            mem_size = self.acmodel.module.memory_size
+        self.memory = torch.zeros(shape[1], mem_size, device=self.device)
+        self.memories = torch.zeros(*shape, mem_size, device=self.device)
 
         self.mask = torch.ones(shape[1], device=self.device)
         self.masks = torch.zeros(*shape, device=self.device)
