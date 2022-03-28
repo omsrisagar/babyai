@@ -61,6 +61,9 @@ WORKDIR /app
 #RUN pwd
 ADD requirements.txt .
 RUN pip install -r requirements.txt
+# [No need now] Need to install gym_minigrid after installing babyai as babyai installs default gym_minigrid (without my modifications)
+RUN pip install gym_minigrid -e git+https://github.com/omsrisagar/gym-minigrid.git@master#egg=gym_minigrid
+#RUN pip install jericho -e git+https://github.com/microsoft/jericho.git@6f761073ef064e62412c36cc8de569f57b39561c#egg=jericho
 
 RUN pwd
 RUN ls -la .
@@ -76,10 +79,7 @@ ADD scripts ./scripts
 
 RUN pip install --editable .
 
-# Need to install gym_minigrid after installing babyai as babyai installs default gym_minigrid (without my modifications)
 #RUN pip install babyai -e git+https://github.com/omsrisagar/babyai.git@kg#egg=babyai
-RUN pip install gym_minigrid -e git+https://github.com/omsrisagar/gym-minigrid.git@master#egg=gym_minigrid
-#RUN pip install jericho -e git+https://github.com/microsoft/jericho.git@6f761073ef064e62412c36cc8de569f57b39561c#egg=jericho
 
 #CMD ["pwd"]
 #RUN ls -la /babyai_kg/*
