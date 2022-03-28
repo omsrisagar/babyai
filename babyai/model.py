@@ -21,18 +21,19 @@ def initialize_parameters(m):
 
 # Inspired by FiLMedBlock from https://arxiv.org/abs/1709.07871
 class FiLM(nn.Module):
-    def __init__(self, in_features, out_features, in_channels, imm_channels):
+    def __init__(self, in_features, out_features, in_channels, imm_channels, use_obs_image):
         super().__init__()
-        self.conv1 = nn.Conv2d(
-            in_channels=in_channels, out_channels=imm_channels,
-            kernel_size=(3, 3), padding=1)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.bn1 = nn.BatchNorm2d(imm_channels)
+        if use_obs_image:
+            self.conv1 = nn.Conv2d(
+                in_channels=in_channels, out_channels=imm_channels,
+                kernel_size=(3, 3), padding=1)
+            self.bn1 = nn.BatchNorm2d(imm_channels)
+            self.conv2 = nn.Conv2d(
+                in_channels=imm_channels, out_channels=out_features,
+                kernel_size=(3, 3), padding=1)
+            self.bn2 = nn.BatchNorm2d(out_features)
         self.bn1_1d = nn.BatchNorm1d(imm_channels)
-        self.conv2 = nn.Conv2d(
-            in_channels=imm_channels, out_channels=out_features,
-            kernel_size=(3, 3), padding=1)
-        self.bn2 = nn.BatchNorm2d(out_features)
         self.bn2_1d = nn.BatchNorm1d(out_features)
 
         self.weight = nn.Linear(in_features, out_features)
@@ -236,23 +237,24 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
 
         # if not self.use_instr:
         #     raise ValueError("FiLM architecture can be used when instructions are enabled")
-        self.image_conv = nn.Sequential(*[
-            *([ImageBOWEmbedding(obs_space['image'], 128)] if use_bow else []),
-            *([nn.Conv2d(
-                in_channels=3, out_channels=128, kernel_size=(8, 8),
-                stride=8, padding=0)] if pixel else []),
-            nn.Conv2d(
-                in_channels=128 if use_bow or pixel else 3, out_channels=128,
-                kernel_size=(3, 3) if endpool else (2, 2), stride=1, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            *([] if endpool else [nn.MaxPool2d(kernel_size=(2, 2), stride=2)]),
-            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            *([] if endpool else [nn.MaxPool2d(kernel_size=(2, 2), stride=2)])
-        ])
-        self.film_pool = nn.MaxPool2d(kernel_size=(7, 7) if endpool else (2, 2), stride=2)
+        if self.use_obs_image:
+            self.image_conv = nn.Sequential(*[
+                *([ImageBOWEmbedding(obs_space['image'], 128)] if use_bow else []),
+                *([nn.Conv2d(
+                    in_channels=3, out_channels=128, kernel_size=(8, 8),
+                    stride=8, padding=0)] if pixel else []),
+                nn.Conv2d(
+                    in_channels=128 if use_bow or pixel else 3, out_channels=128,
+                    kernel_size=(3, 3) if endpool else (2, 2), stride=1, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(),
+                *([] if endpool else [nn.MaxPool2d(kernel_size=(2, 2), stride=2)]),
+                nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(),
+                *([] if endpool else [nn.MaxPool2d(kernel_size=(2, 2), stride=2)])
+            ])
+            self.film_pool = nn.MaxPool2d(kernel_size=(7, 7) if endpool else (2, 2), stride=2)
 
         # Define instruction embedding
         if self.use_instr:
@@ -283,7 +285,7 @@ class ACModel(nn.Module, babyai.rl.RecurrentACModel):
                     mod = FiLM(
                         in_features=self.final_instr_dim,
                         out_features=128 if ni < num_module-1 else self.image_dim,
-                        in_channels=128, imm_channels=128)
+                        in_channels=128, imm_channels=128, use_obs_image=self.use_obs_image)
                     self.controllers.append(mod)
                     self.add_module('FiLM_' + str(ni), mod)
 
